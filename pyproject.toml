@@ -14,7 +14,9 @@ authors = [
 ]
 
 
-dependencies = []
+dependencies = [
+    "sqlmodel>=0.0.31",
+]
 [dependency-groups]
 dev = [
     "ipdb>=0.13.13",

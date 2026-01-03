@@ -1,16 +1,21 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 @dataclass
-class Branch:
+class IBranch:
     name: str
     description: str
-    parent: 'Branch'
-    branches: list['Branch'] = field(default_factory=list['Branch'])
+    parent: 'IBranch'
+    root: Optional['IRoot'] = None
+    branches: list['IBranch'] = field(default_factory=list['IBranch'])
 
     def __post_init__(self):
         if self.parent and self not in self.parent.branches:
             self.parent.branches.append(self)
+        if self.root is None:
+            self.root = self.parent
 
 @dataclass(kw_only=True)
-class TreeRoot(Branch):
-    parent: Branch = None
+class IRoot(IBranch):
+    parent: IBranch = None
+    root: 'IRoot' = None
