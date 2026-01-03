@@ -31,6 +31,7 @@ class ContextEvent(SQLModel, table=True):
     draft_id: Optional[str]  # Draft UUID that triggered this, if any
     timestamp: float
     stack_name: str = Field(default="default")  # Support multiple context stacks
+    match_result: Optional[str] = None  # Text representation of match result for context
     created_at: datetime = Field(default_factory=datetime.now)
 
 class IBranch(SQLModel, table=True):
