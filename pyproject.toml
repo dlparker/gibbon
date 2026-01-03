@@ -16,8 +16,10 @@ authors = [
 
 dependencies = [
     "fire>=0.7.1",
+    "httpx>=0.28.1",
     "ollama>=0.6.1",
     "sqlmodel>=0.0.31",
+    "websockets>=14.1",
 ]
 [dependency-groups]
 dev = [

@@ -1,0 +1,272 @@
+
+* Palaver API Guide
+
+Integration guide for connecting gibbon to palaver's draft collection APIs.
+
+** Server Configuration
+
+- Default Port: 8000
+- Base URL: http://localhost:8000 (or network host)
+- Protocol: FastAPI with WebSocket support
+
+** REST API Endpoints
+
+*** GET /drafts - List Drafts
+
+Query Parameters:
+- since: Optional[str] - Unix timestamp or ISO datetime string
+- limit: int - Max results (1-1000, default 100)
+- offset: int - Results to skip (default 0)
+- order: str - Sort order "asc" or "desc" by timestamp (default "desc")
+- summary: bool - Return draft summary only (default false)
+
+Response:
+#+begin_src json
+{
+  "drafts": [
+    {
+      "draft_id": "uuid-string",
+      "timestamp": 1234567890.123,
+      "full_text": "transcribed text",
+      "classname": "string",
+      "directory_path": "string",
+      "parent_draft_id": "uuid-string or null",
+      "created_at": "ISO datetime string"
+    }
+  ],
+  "total": 100,
+  "limit": 100,
+  "offset": 0,
+  "has_more": false
+}
+#+end_src
+
+If summary=true, drafts are:
+#+begin_src json
+{
+  "draft_id": "uuid",
+  "timestamp": 1234567890.123,
+  "parent_draft_id": "uuid or null"
+}
+#+end_src
+
+*** GET /drafts/{draft_id} - Get Specific Draft
+
+Path Parameters:
+- draft_id: str - Draft UUID
+
+Query Parameters:
+- include_parent: bool - Include parent draft (default false)
+- include_children: bool - Include child drafts (default false)
+
+Response:
+#+begin_src json
+{
+  "draft": { ... },
+  "parent": { ... } or null,
+  "children": [ ... ] or []
+}
+#+end_src
+
+** WebSocket Endpoints
+
+*** WS /new_draft - Submit New Draft
+
+Send:
+#+begin_src json
+{
+  "start_text": "string",
+  "end_text": "string or null",
+  "full_text": "string",
+  "timestamp": 1234567890.123,
+  "draft_id": "uuid-string",
+  "parent_draft_id": "uuid-string or null",
+  "audio_start_time": 1234567890.123 or null,
+  "audio_end_time": 1234567890.123 or null
+}
+#+end_src
+
+Receive:
+#+begin_src json
+{"code": "success"}
+#+end_src
+
+*** WS /events - Subscribe to Events
+
+Connect and send subscription:
+#+begin_src json
+{
+  "subscribe": ["<class 'palaver.scribe.draft_events.DraftEndEvent'>"]
+}
+#+end_src
+
+Available event types:
+- "<class 'palaver.scribe.draft_events.DraftStartEvent'>" - Draft creation started
+- "<class 'palaver.scribe.draft_events.DraftEndEvent'>" - Draft completed
+- "<class 'palaver.scribe.draft_events.DraftRevisionEvent'>" - Draft revised
+- "all_but_chunks" - Subscribe to all events except audio chunks
+- "all" - Subscribe to all events
+
+Event format received:
+#+begin_src json
+{
+  "event_class": "<class 'palaver.scribe.draft_events.DraftEndEvent'>",
+  "draft": {
+    "start_text": "...",
+    "end_text": "...",
+    "full_text": "...",
+    "timestamp": 1234567890.123,
+    "draft_id": "uuid",
+    "parent_draft_id": "uuid or null",
+    "audio_start_time": 1234567890.123,
+    "audio_end_time": 1234567890.123
+  },
+  "timestamp": 1234567890.123,
+  "event_id": "uuid",
+  "author_uri": "http://hostname:port/routes"
+}
+#+end_src
+
+** Draft Data Structure
+
+*** Draft Dataclass (palaver internal)
+#+begin_src python
+@dataclass
+class Draft:
+    start_text: str
+    end_text: Optional[str] = None
+    full_text: Optional[str] = ""
+    timestamp: float = <current time>
+    draft_id: str = <uuid>
+    parent_draft_id: Optional[str] = None
+    audio_start_time: Optional[float] = None
+    audio_end_time: Optional[float] = None
+#+end_src
+
+*** DraftRecord (SQLModel from database)
+
+Fields returned from GET /drafts:
+- draft_id: str (UUID)
+- timestamp: float (Unix timestamp)
+- full_text: str (transcribed text)
+- classname: str
+- directory_path: str
+- parent_draft_id: Optional[str] (UUID)
+- created_at: datetime (ISO string when serialized)
+
+** Mapping to Gibbon Draft Model
+
+Gibbon's Draft model:
+#+begin_src python
+class Draft(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    draft_id: str = Field(index=True, unique=True)
+    timestamp: float
+    full_text: str
+    created_at: datetime = Field(default_factory=datetime.now)
+#+end_src
+
+Field mapping:
+| Palaver Field    | Gibbon Field | Notes                                    |
+|------------------+--------------+------------------------------------------|
+| draft_id         | draft_id     | Direct copy (UUID string)                |
+| timestamp        | timestamp    | Direct copy (float)                      |
+| full_text        | full_text    | Direct copy (string)                     |
+| created_at       | created_at   | Parse ISO string to datetime if present  |
+| classname        | (ignored)    | Not needed in gibbon                     |
+| directory_path   | (ignored)    | Not needed in gibbon                     |
+| parent_draft_id  | (ignored)    | Not needed in gibbon (for now)           |
+
+** Integration Architecture
+
+*** Option 1: Polling (Simple)
+
+Periodically query GET /drafts?since=<last_timestamp> to fetch new drafts.
+
+Pros:
+- Simple to implement
+- No persistent connection
+- Robust to network failures
+
+Cons:
+- Polling delay (not real-time)
+- More HTTP overhead
+
+*** Option 2: WebSocket Listener (Real-time)
+
+Subscribe to DraftEndEvent via WS /events and process drafts as they arrive.
+
+Pros:
+- Real-time processing
+- Lower latency
+- Event-driven architecture
+
+Cons:
+- Persistent connection management
+- Reconnection logic needed
+- More complex
+
+*** Recommended: Hybrid Approach
+
+1. WebSocket listener for real-time processing of new drafts
+2. Periodic polling on startup to catch any missed drafts
+3. Store last_processed_timestamp to avoid duplicates
+
+** Example Integration Code Structure
+
+#+begin_src python
+# Fetch drafts from palaver
+async def fetch_drafts_since(palaver_url: str, since_timestamp: float):
+    url = f"{palaver_url}/drafts?since={since_timestamp}"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        data = response.json()
+        return data["drafts"]
+
+# Convert palaver draft to gibbon draft
+def convert_draft(palaver_draft: dict) -> Draft:
+    return Draft(
+        draft_id=palaver_draft["draft_id"],
+        timestamp=palaver_draft["timestamp"],
+        full_text=palaver_draft["full_text"],
+        # created_at will default to now if not provided
+    )
+
+# WebSocket listener for real-time drafts
+async def listen_for_drafts(palaver_url: str):
+    ws_url = palaver_url.replace("http://", "ws://") + "/events"
+    async with websockets.connect(ws_url) as websocket:
+        # Subscribe to DraftEndEvent
+        await websocket.send(json.dumps({
+            "subscribe": ["<class 'palaver.scribe.draft_events.DraftEndEvent'>"]
+        }))
+
+        # Listen for events
+        while True:
+            event_data = await websocket.receive_json()
+            draft_dict = event_data["draft"]
+            # Process draft...
+#+end_src
+
+** Next Steps for Gibbon Integration
+
+1. Create palaver client module (gibbon/palaver_client/)
+   - REST API client for fetching drafts
+   - WebSocket client for real-time listening
+   - Draft conversion utilities
+
+2. Create draft sync service
+   - Track last processed timestamp
+   - Periodic polling for missed drafts
+   - Deduplicate based on draft_id
+
+3. Create listener server
+   - Subscribe to DraftEndEvent
+   - Run LLM intent matching
+   - Store results in ContextEvent
+
+4. Handle edge cases
+   - Connection failures and reconnection
+   - Duplicate detection
+   - Error handling and logging
+
