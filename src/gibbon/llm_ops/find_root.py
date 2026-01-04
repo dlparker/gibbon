@@ -22,5 +22,4 @@ async def send_to_llm(combined_text: str, ollama_url: str, model: str) -> dict:
             'temperature': 0,  # Deterministic responses
         }
     )
-
     return response

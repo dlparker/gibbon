@@ -1,0 +1,77 @@
+top_levels:
+  - roots
+
+roots:
+  root1:
+    name: task_board
+    description: Project task tracking via Task-Board tool
+    children:
+      project_by_name:
+        description: Select project by name
+      project_by_search:
+        description: Select project by search
+
+  root2:
+    name: book_background
+    description: Book background work
+    children:
+      world_building:
+        description: World building
+
+      splits:
+        description: Technology and resource divisions
+        children:
+          tech_tree:
+            description: Technology production capacity
+            children:
+              steel:
+                description: Steel production tools and resources
+              oil:
+                description: Petroleum oil production tools
+              plastic:
+                description: Plastics production tools
+
+          resource_grid:
+            description: Resource Grid
+            children:
+              energy:
+                description: Energy resource transport
+                children:
+                  oil:
+                    description: Oil well fields
+                  coal:
+                    description: Coal mines
+
+              metals:
+                description: Metal ore production
+                children:
+                  mining:
+                    description: Mining for metal ore
+                    children:
+                      iron:
+                        description: Iron ore mining
+                      copper:
+                        description: Copper ore mining
+
+                  refining:
+                    description: Refining metal ore
+                    children:
+                      iron:
+                        description: Iron ore refining
+                      copper:
+                        description: Copper ore refining
+
+          transport_grid:
+            description: Transportation Grid
+            children:
+              rail:
+                description: Rail transportation
+                children:
+                  resource:
+                    description: Rail transportation for resources
+                    children:
+                      oil_to_port:
+                        description: Tanker rail car trains to port facilities
+                      coal_to_port:
+                        description: Coal rail car trains to port facilities
+
