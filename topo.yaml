@@ -8,8 +8,10 @@ roots:
     children:
       project_by_name:
         description: Select project by name
+        topic: True
       project_by_search:
         description: Select project by search
+        topic: True
 
   root2:
     name: book_background
@@ -26,10 +28,13 @@ roots:
             children:
               steel:
                 description: Steel production tools and resources
+                is_topic: True
               oil:
                 description: Petroleum oil production tools
+                is_topic: True
               plastic:
                 description: Plastics production tools
+                is_topic: True
 
           resource_grid:
             description: Resource Grid
@@ -39,28 +44,33 @@ roots:
                 children:
                   oil:
                     description: Oil well fields
+                    is_topic: True
                   coal:
                     description: Coal mines
-
+                    is_topic: True
               metals:
                 description: Metal ore production
                 children:
                   mining:
                     description: Mining for metal ore
+                    is_topic: True
                     children:
                       iron:
                         description: Iron ore mining
+                        is_topic: True
                       copper:
                         description: Copper ore mining
-
+                        is_topic: True
                   refining:
                     description: Refining metal ore
+                    is_topic: True
                     children:
                       iron:
                         description: Iron ore refining
+                        is_topic: True
                       copper:
                         description: Copper ore refining
-
+                        is_topic: True
           transport_grid:
             description: Transportation Grid
             children:
@@ -72,6 +82,8 @@ roots:
                     children:
                       oil_to_port:
                         description: Tanker rail car trains to port facilities
+                        is_topic: True
                       coal_to_port:
                         description: Coal rail car trains to port facilities
+                        is_topic: True
 

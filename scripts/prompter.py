@@ -1,5 +1,6 @@
 import asyncio
 import fire
+import json
 from  prompt_styles import do_draft_prompt
 from pprint import pprint
 class Prompter:
@@ -12,6 +13,19 @@ class Prompter:
         print(res['prompt'])
         print('-'*50 + " result " + '-'*50)
         pprint(res['full_res'].__dict__)
+        print('-'*50 + " matches " + '-'*50)
+        pprint(res['matches'])
+
+    def do_full_1(self):
+        draft = "Iron mines"
+        yaml_path = "topo.yaml"
+        style = "yaml_cats_2"
+        res = asyncio.run(do_draft_prompt(draft, yaml_path, style))
+        print('-'*50 + " prompt " + '-'*50)
+        print(res['prompt'])
+        print('-'*50 + " result " + '-'*50)
+        pprint(res['full_res'].__dict__)
+        pprint(json.loads(res['full_res'].message.content))
         print('-'*50 + " matches " + '-'*50)
         pprint(res['matches'])
 
@@ -49,6 +63,28 @@ class Prompter:
         pprint(res['full_res'].__dict__)
         print('-'*50 + " matches " + '-'*50)
         pprint(res['matches'])
+
+    def do_topics_only(self):
+        draft = "mining"
+        yaml_path = "topo.yaml"
+        style = "topics_only"
+        res = asyncio.run(do_draft_prompt(draft, yaml_path, style))
+        print('-'*50 + " prompt " + '-'*50)
+        print(res['prompt'])
+        print('-'*50 + " result " + '-'*50)
+        pprint(res['full_res'].__dict__)
+        print('-'*50 + " matches " + '-'*50)
+        pprint(res['matches'])
+        draft2 = "copper production"
+        yaml_path = "topo.yaml"
+        style = "topics_only"
+        res2 = asyncio.run(do_draft_prompt(draft2, yaml_path, style))
+        print('-'*50 + " prompt " + '-'*50)
+        print(res2['prompt'])
+        print('-'*50 + " result " + '-'*50)
+        pprint(res2['full_res'].__dict__)
+        print('-'*50 + " matches " + '-'*50)
+        pprint(res2['matches'])
 
 
 if __name__ == '__main__':
