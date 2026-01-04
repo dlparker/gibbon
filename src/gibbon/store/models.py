@@ -41,6 +41,8 @@ class IBranch(SQLModel, table=True):
     name: str
     description: str
     parent_id: Optional[int] = Field(default=None, foreign_key="i_branches.id")
+    version: Optional[int] = None  # Only set on roots - children inherit from parent
+    is_active: bool = True  # Mark which version to use for matching
     created_at: datetime = Field(default_factory=datetime.now)
 
     # Relationships - SQLModel uses Relationship for ORM relationships
@@ -68,10 +70,16 @@ class IBranch(SQLModel, table=True):
 
     # Class methods (Django ModelManager style)
     @classmethod
-    def get_roots(cls, session: Session) -> list["IBranch"]:
-        """Get all root branches (branches with no parent)."""
+    def get_roots(cls, session: Session, active_only: bool = True) -> list["IBranch"]:
+        """Get all root branches (branches with no parent).
+
+        Args:
+            active_only: If True, only return active roots. If False, return all roots.
+        """
         from sqlmodel import select
         statement = select(cls).where(cls.parent_id == None)
+        if active_only:
+            statement = statement.where(cls.is_active == True)
         return list(session.exec(statement).all())
 
     @classmethod

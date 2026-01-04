@@ -59,8 +59,8 @@ async def main():
 
     # Query and display the tree
     with ibranch_store.session() as session:
-        roots = IBranch.get_roots(session)
-        print(f"\nFound {len(roots)} root(s):")
+        roots = IBranch.get_roots(session, active_only=True)
+        print(f"\nFound {len(roots)} active root(s):")
         for root in roots:
             print(f"  Root: {root.name}")
             print(f"    Children: {[c.name for c in root.children]}")

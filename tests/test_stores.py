@@ -58,7 +58,7 @@ async def test_three_stores():
 
         # Query the tree structure
         with ibranch_store.session() as session:
-            roots = IBranch.get_roots(session)
+            roots = IBranch.get_roots(session, active_only=True)
             assert len(roots) == 1
             assert roots[0].name == "grocery list"
 

@@ -30,7 +30,9 @@ def create_test_branches(store_dir: Path) -> IBranchStore:
         # Root: Todo lists
         todo_root = IBranch(
             name="Todo lists",
-            description="Lists of items that need doing"
+            description="Lists of items that need doing",
+            version=1,
+            is_active=True
         )
         session.add(todo_root)
         session.commit()
@@ -59,7 +61,9 @@ def create_test_branches(store_dir: Path) -> IBranchStore:
         # Root: Project Notes
         projects_root = IBranch(
             name="Project Notes",
-            description="Notes and tasks for various projects"
+            description="Notes and tasks for various projects",
+            version=1,
+            is_active=True
         )
         session.add(projects_root)
         session.commit()
@@ -134,12 +138,13 @@ def format_branches_for_prompt(ibranch_store: IBranchStore) -> str:
     """
     Format IBranches as text for LLM prompt.
 
+    Only includes active category trees.
     Returns formatted category list.
     """
     lines = ["Categories (hierarchical - child categories are more specific than parents):", ""]
 
     with ibranch_store.session() as session:
-        roots = IBranch.get_roots(session)
+        roots = IBranch.get_roots(session, active_only=True)
 
         for root in roots:
             parent_str = "none"
@@ -153,10 +158,8 @@ def format_branches_for_prompt(ibranch_store: IBranchStore) -> str:
 
 async def main():
     """Generate all test data."""
-    # Set up clean test directory
-    store_dir = Path("/tmp/gibbon_test")
-    if store_dir.exists():
-        shutil.rmtree(store_dir)
+    # Use ./data for production
+    store_dir = Path("./data")
     store_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)

@@ -80,11 +80,14 @@ def parse_llm_response(response) -> list[dict]:
 
 
 def format_categories_for_prompt(ibranch_store: IBranchStore) -> str:
-    """Format IBranches as text for LLM prompt."""
+    """Format IBranches as text for LLM prompt.
+
+    Only includes active category trees.
+    """
     lines = ["Categories (hierarchical - child categories are more specific than parents):", ""]
 
     with ibranch_store.session() as session:
-        roots = IBranch.get_roots(session)
+        roots = IBranch.get_roots(session, active_only=True)
 
         for root in roots:
             lines.append(f"- {root.name} (ID={root.id}, parent: none)")
