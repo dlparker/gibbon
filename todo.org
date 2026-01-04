@@ -1,0 +1,26 @@
+
+
+1. Create a DraftSink - an API for tools that take over disposition
+   of drafts once they are categorized.
+2. Create association between IBranch nodes and a DraftSink
+   1. To start, make this a runtime registry where each DraftSink
+      is given access to a list of IBranch items and the sink
+      removes any that it wants to own from the list
+3. Build a "Category CRUD" tool that can manipulate the
+   IBranch records (remember versioning) and rerun
+   SinkPlumber
+4. Consider replacing "category" and "intention" and "IBranch"
+   etc. with "aim".
+5. Add a "Clear aim context" DraftSink
+6. Sink should get "starting_draft" call. I can use a library
+   function based on plaver draft detection methods to strip
+   the "aim" signal from the front of the draft text, then
+   do as it whishes.
+7. Sink should report back "continue" or "done". If "continue"
+   and next draft does not trigger an "aim" change, then
+   Sink gets a "continue_draft" call. Otherwise the
+   draft is "orphaned". 
+   
+   
+   
+   
