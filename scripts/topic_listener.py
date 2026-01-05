@@ -7,6 +7,7 @@ and stores results in gibbon's database.
 import asyncio
 import logging
 import time
+import json
 import signal
 from pathlib import Path
 from typing import Optional
@@ -19,26 +20,20 @@ from gibbon.palaver_client import (
 from gibbon.store.models import (
     Draft,
     DraftStore,
-    IBranch,
-    IBranchStore,
     ContextEvent,
     ContextStore,
 )
 from gibbon.llm_ops.find_root import send_to_llm
-from gibbon.llm_ops.intent_matcher import (
-    parse_llm_response,
-    format_categories_for_prompt,
-    build_prompt,
-)
-
+from prompt_tools.topic_cats import TopicsOnly
 
 # Configuration
 PALAVER_URL = "http://localhost:8000"
 GIBBON_STORE_DIR = Path("./data")
 OLLAMA_URL = "http://192.168.100.242:11434"
-MODEL = "llama3.1:8b-instruct-q4_K_M"
+#MODEL = "llama3.1:8b-instruct-q4_K_M"
+MODEL = "mistral:7b-instruct"
 CONTEXT_STACK = "palaver_live"
-SYNC_LOOKBACK_HOURS = 1  # How many hours back to sync on startup (0 = disable sync)
+SYNC_LOOKBACK_HOURS = 5  # How many hours back to sync on startup (0 = disable sync)
 
 # Logging
 logging.basicConfig(
@@ -47,27 +42,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger("DraftListener")
 
+url = 'http://192.168.100.242:11434'
+model = 'llama3.1:8b-instruct-q4_K_M'
 
 class DraftListenerServer:
     """Server that listens for drafts from palaver and processes them."""
 
-    def __init__(
-        self,
-        palaver_url: str,
-        store_dir: Path,
-        ollama_url: str,
-        model: str,
-        context_stack: str = "default"
-    ):
+    def __init__(self,  palaver_url: str,  category_yaml: Path, store_dir: Path, context_stack:str):
         self.palaver_url = palaver_url
+        self.category_yaml = category_yaml
         self.store_dir = Path(store_dir)
-        self.ollama_url = ollama_url
-        self.model = model
         self.context_stack = context_stack
+        self.prompt_tool = TopicsOnly
+        self.ollama_url = url
+        self.model = model
 
         # Initialize stores
         self.draft_store = DraftStore(self.store_dir)
-        self.ibranch_store = IBranchStore(self.store_dir)
         self.context_store = ContextStore(self.store_dir)
 
         # WebSocket client
@@ -79,9 +70,6 @@ class DraftListenerServer:
 
         # Track last sync timestamp
         self.last_sync_timestamp: Optional[float] = None
-
-        # Formatted categories for prompts
-        self.categories_text = format_categories_for_prompt(self.ibranch_store)
 
         # Shutdown flag
         self.running = False
@@ -159,35 +147,42 @@ class DraftListenerServer:
             draft: Draft to process
         """
         logger.info(f"Processing draft: '{draft.full_text[:50]}...'")
-
+        
         # Get current context
         previous_context = self.context_store.get_current_context(self.context_stack)
         context_text = previous_context.match_result if previous_context else None
+        prompt = self.prompt_tool.make_prompt(draft.full_text, self.category_yaml, context=context_text)
+            
 
-        # Build prompt
-        prompt = build_prompt(draft.full_text, self.categories_text, context_text)
-
+        # Parse the response
         # Call LLM
         logger.debug(f"Calling LLM (prompt length: {len(prompt)} chars)")
-        try:
-            response = await send_to_llm(prompt, ollama_url=self.ollama_url, model=self.model)
+        full_res = await send_to_llm(prompt, ollama_url=url, model=model)
+        matches = self.prompt_tool.parse_llm_response(full_res)
 
-            # Parse results
-            matches = parse_llm_response(response)
-
+        async def process_result():
+            
             if matches:
                 top_match = matches[0]
-                logger.info(
-                    f"Matched to: {top_match['category_name']} "
-                    f"(ID={top_match['category_ID']}, conf={top_match['confidence']:.2f})"
-                )
-
+                try:
+                    logger.info(
+                        f"Matched to: {top_match['category_name']} "
+                        f"(ID={top_match['category_name']}, conf={top_match['confidence']:.2f})"
+                    )
+                except Exception as e:
+                    breakpoint()
+                    import traceback
+                    traceback.print_exc()
+                    from pprint import pprint
+                    pprint(matches)
+                    pprint(full_result.__dict__)
+            
                 # Create context event
                 match_result_text = (
                     f"Previous draft matched to: '{top_match['category_name']}' "
-                    f"(ID={top_match['category_ID']}, confidence={top_match['confidence']:.2f})"
+                    f"(ID={top_match['category_name']}, confidence={top_match['confidence']:.2f})"
                 )
-
+            
                 event = ContextEvent(
                     intent_name=top_match['category_name'],
                     draft_id=draft.draft_id,
@@ -196,14 +191,20 @@ class DraftListenerServer:
                     match_result=match_result_text
                 )
                 await self.context_store.add_event(event)
-
+            
                 logger.info(f"Stored context event for draft {draft.draft_id}")
             else:
                 logger.warning(f"No matches found for draft {draft.draft_id}")
-
-        except Exception as e:
-            logger.error(f"Error processing draft {draft.draft_id}: {e}", exc_info=True)
-
+                            
+            await process_result()
+        result = {
+            'context': context_text,
+            'matches': matches
+        }
+        llm_op_record = await self.draft_store.add_draft_llm_op(draft, prompt, json.dumps(result))
+        logger.info(f"Stored llm_topic_op {llm_op_record.id} for draft {draft.draft_id}")
+            
+    prompt_text: str
     async def handle_draft_event(self, event_data: dict) -> None:
         """
         Handle a DraftEndEvent from palaver.
@@ -241,6 +242,7 @@ class DraftListenerServer:
         logger.info(f"Saved new draft: {draft.draft_id}")
 
         # Process draft (LLM matching)
+        
         await self.process_draft(draft)
 
     async def start(self, sync_lookback_hours: float = 1.0) -> None:
@@ -292,7 +294,7 @@ class DraftListenerServer:
         logger.info("Draft listener server stopped")
 
 
-async def main():
+async def main(category_yaml):
     """Main entry point."""
     # Create store directory if needed
     GIBBON_STORE_DIR.mkdir(parents=True, exist_ok=True)
@@ -301,8 +303,7 @@ async def main():
     server = DraftListenerServer(
         palaver_url=PALAVER_URL,
         store_dir=GIBBON_STORE_DIR,
-        ollama_url=OLLAMA_URL,
-        model=MODEL,
+        category_yaml=category_yaml,
         context_stack=CONTEXT_STACK
     )
 
@@ -326,4 +327,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    category_yaml = Path(__file__).parent / "essay.yaml"
+    asyncio.run(main(category_yaml))

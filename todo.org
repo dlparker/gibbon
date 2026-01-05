@@ -1,4 +1,31 @@
+1. Need to write a clear explaination of the difference between an
+   "Aim Tree", which captures the user's intentions to dispose of a
+   draft in a particular way, and "Topics" which provide a more
+   focused method for asking an LLM to figure out which "Aiming
+   Phrase" the user might be supplying.  The Aim Tree needs to not
+   have arbitrary limits on depth or breadth, but the LLM will get
+   very confused if the whole tree is presented as choices.  Small
+   LLMs can't deal with the concept of finding the best match,
+   regardless of the level in the tree at which the match example is
+   supplied, they just get lost. So we use "topics" to supply
+   selections to the prompt. Unless I build a big machine to run
+   big models, I may have to live with the idea that the
+   possible traversal from one "aim statement" is limited to
+   the nearby portions of the "current" tree location, and
+   to the roots of other trees. Though it might be possible
+   using the "context stack" notion to save positions in multiple
+   trees and jump between them by naming the tree (root).
+   
 
+
+1. Need a mechanism to trim noises from draft, e.g. "*squeak*"
+2. Need a notion of multiple category trees, at least two,
+   one for traversing and another for editing the first one.
+   Probably more, so that trees become flatter. Maybe
+   a "mode" tree that selects the "current" tree and there
+   is always an edit tree root aaded dynamically?
+   
+   
 
 1. Create a DraftSink - an API for tools that take over disposition
    of drafts once they are categorized.

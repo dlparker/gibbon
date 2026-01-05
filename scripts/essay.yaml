@@ -6,6 +6,12 @@ roots:
       new_topic:
         description: Create a new topic
         is_topic: true
+      select_topic:
+        description: Select topic named
+        is_topic: true
+      select_parent_topic:
+        description: Select parent topic
+        is_topic: true
       record_essay:
         description: Record a topic essay 
         is_topic: true

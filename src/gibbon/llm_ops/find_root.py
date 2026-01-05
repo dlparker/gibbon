@@ -30,6 +30,10 @@ tools = [
                                     "minimum": 0.0,
                                     "maximum": 1.0,
                                     "description": "Confidence score from 0.0 to 1.0"
+                                },
+                                "matching_excerpt": {
+                                    "type": "string",
+                                    "description": "The exact words or phrase from the transcript that led to this category match"
                                 }
                             },
                             "required": ["category_name", "category_description", "confidence"]

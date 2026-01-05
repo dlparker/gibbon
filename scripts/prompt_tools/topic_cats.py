@@ -8,6 +8,18 @@ from gibbon.llm_ops.find_root import send_to_llm
 
 
 main_template = """
+You are reviewing transcripts produced by a voice to text system to detect
+specific phrases that will trigger action in the calling system. These
+phrases will be in the first few words of the transcript. You will examine
+the first few words of the transcript to see if they match any of the
+provided categories. You will limit the detection to the first few words
+which should clearly be an imperative phrase, and disregard the remainder
+of the transcript. The categories for matching are explained in the next section
+of this prompt. You will follow the provided scoring instructions to
+assign scores to the possible matches. You will follow the provided
+output rules for producing a report for the caller. 
+
+
 **CATEGORIZATION**:
 **AVAILABLE CATEGORIES** (exactly {num_topics} — use ONLY these):
 Each category has a fixed "key" that you MUST use for "category_name".
@@ -76,64 +88,7 @@ Then, output only the qualifying ones in the exact JSON format above.
 """
 
 
-context_template= """
-**CONTEXT WEIGHTING - CRITICAL**:
-The previous draft created this context. Users typically stay on the same category
-for multiple consecutive drafts. Give preference to categories related to
-the context below. Only choose a different category if the new transcript has
-CLEAR, EXPLICIT keywords that strongly indicate a category change.
-
-Context weight: +0.15 to confidence for categories related to the context below.
-
-IMPORTANT: Context preference means choosing MORE SPECIFIC children WITHIN the context branch.
-If the context is "metals", prefer "mining" or "refining" children, not staying at "metals".
-The context bonus should help you choose the right branch, then GO DEEPER to the leaf.
-
----- Context begins -----
-{context}
----- Context ends -----
-
-"""
-output_spec1 = """
-**OUTPUT FORMAT - CRITICAL**:
-Return all matches up to a total of 5 as JSON array. No extra text, no markdown.
-Should look like this but with actual category names and descriptions:
-[
-  {
-    "category_name": "some_category_key",
-    "category_description": "This category is really close",
-    "confidence": 0.91
-  },
-  {
-    "category_name": "second_category_key",
-    "category_description": "This category is pretty close",
-    "confidence": 0.70
-  },
-  {
-    "category_name": "another_category_key",
-    "category_description": "Another category ",
-    "confidence": 0.60
-  }
-  {
-    "category_name": "fifth_category_key",
-    "category_description": "not much like transcript",
-    "confidence": 0.2
-  },
-  {
-    "category_name": "fourth_category_key",
-    "category_description": "no match at all",
-    "confidence": 0.0
-  },
-]
-
-
-Fields:
-- "category_name": exact key from the category list
-- "category_description": exact description from the category
-- "confidence": float 0.0 to 1.0
-"""
-
-output_spec = """
+output_spec_no_tool = """
 **OUTPUT FORMAT - MUST FOLLOW EXACTLY**:
 - Return ONLY a valid JSON array. No outer object, no "categories" wrapper.
 - No extra text, no explanations, no markdown, no trailing commas.
@@ -186,6 +141,25 @@ Include:
 Sort by confidence descending.
 Use exact key and description from the list.
 """
+
+context_template= """
+**CONTEXT WEIGHTING - CRITICAL**:
+The previous draft created this context. Users typically stay on the same category
+for multiple consecutive drafts. Give preference to categories related to
+the context below. Only choose a different category if the new transcript has
+CLEAR, EXPLICIT keywords that strongly indicate a category change.
+
+Context weight: +0.15 to confidence for categories related to the context below.
+
+IMPORTANT: Context preference means choosing MORE SPECIFIC children WITHIN the context branch.
+If the context is "metals", prefer "mining" or "refining" children, not staying at "metals".
+The context bonus should help you choose the right branch, then GO DEEPER to the leaf.
+
+---- Context begins -----
+{context}
+---- Context ends -----
+
+"""
 class TopicsOnly:
 
     @staticmethod
@@ -195,7 +169,7 @@ class TopicsOnly:
         topics_yaml = yaml.dump({'subjects': topic_paths}, sort_keys=False)
         prompt = main_template.format(draft=draft, topics_yaml=topics_yaml, num_topics=len(topic_paths))
         if context:
-            prompt += context_part.format(context=context)
+            prompt += context_template.format(context=context)
         # Use tool calling or direct JSON based on flag
         prompt += output_spec_tool_call if use_tool_calling else output_spec
         return prompt

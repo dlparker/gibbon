@@ -5,18 +5,6 @@ from typing import List, Optional
 from ..draft_sink import DraftSink, DraftContext, SinkResponse
 
 class TopicEssayBuilder(DraftSink):
-    """
-    DraftSink for building topic essays via voice dictation.
-
-    Handles two modes:
-    1. "add topic <name>" - Create new topic entry
-    2. "topic essay" - Add/edit essay for current topic
-
-    Multi-draft flow:
-    - "add topic copper mining" → prompts for essay
-    - "topic essay. Copper mining extracts..." → stores essay
-    - "done" → finishes session
-    """
 
     def __init__(self, essays_file: str = "topo_essays.yaml"):
         self.essays_file = Path(essays_file)
