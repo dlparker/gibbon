@@ -38,16 +38,22 @@ DO NOT invent categories! Return results only for categories actually found in t
 
 
 **Scoring Guidelines**:
-- 0.9-1.0: Direct keyword match OR strong semantic match of all category terms
-- 0.7-0.9: Related terms or clear semantic relation
+- 0.9-1.0: Direct keyword match OR strong semantic match
+- 0.7-0.9: Related terms with clear semantic relation
 - 0.5-0.7: Indirect match or inferred intent
-- < 0.5: No useful match
+- < 0.5: No useful match or different intent
 
-**CRITICAL - SPECIFICITY MATTERS**:
+**CRITICAL - BE STRICT**:
+- Different actions (create vs edit vs select) should score LOW unless both match
+- Generic word overlap alone is not enough for high scores
+- Example: "Create topic" matches "Create a new topic" (0.95+), NOT "Edit essay" (0.2)
+
+**SPECIFICITY MATTERS**:
 - PRIORITIZE specific/unique words over generic ones
 - "copper production" → "copper" is SPECIFIC (discriminator), "production" is GENERIC (common)
 - Match on SPECIFIC words first: copper, iron, steel, coal, plastic, oil
 - Generic words (production, tools, resources, ore) are weak signals alone
+- Generic action words (create, edit, select, record) must match the category's action
 - If transcript has BOTH specific and generic words, match primarily on the specific word
 - Example: "copper production" should match "Copper ore mining" (0.9+), NOT "Plastics production" (0.3)
 
@@ -59,7 +65,7 @@ DO NOT invent categories! Return results only for categories actually found in t
 - "Dig for metal ore" should ALSO match mining subjects at 0.8+ (semantic understanding)
 - Transcription variations are OK: "mind" → "mine", "iran" → "iron"
 
-First, silently score all 3 categories.
+First, silently score all {num_topics} categories.
 Then, apply the ≥0.50 rule plus best-match exception.
 Then, output only the qualifying ones in the exact JSON format above.
 
@@ -208,13 +214,26 @@ class TopicsOnly:
             List of match dicts with keys: category_name, category_description, confidence
             Empty list if parsing fails
         """
-        # Extract content string from response object
+        # Check for native tool calling FIRST (highest priority)
+        if hasattr(response, 'message') and hasattr(response.message, 'tool_calls') and response.message.tool_calls:
+            tool_call = response.message.tool_calls[0]
+            if tool_call.function.name == "submit_category_matches":
+                # Arguments might be a dict or a JSON string
+                args = tool_call.function.arguments
+                if isinstance(args, str):
+                    args = json.loads(args)
+                matches = args["matches"]
+                return matches
+
+        # Extract content string from response object for fallback parsing
         if hasattr(response, 'message') and hasattr(response.message, 'content'):
             content = response.message.content
         elif isinstance(response, str):
             content = response
         else:
             content = str(response)
+
+        print("\n\nTool calling not working, using fallback parser...\n\n")
 
         # Remove markdown code blocks if present
         content = re.sub(r'```json\s*', '', content)
@@ -249,15 +268,6 @@ class TopicsOnly:
                 print(f"Warning: Failed to parse JSON: {e}")
                 print(f"Content: {json_str[:200]}")
                 return []
-
-        if response.message.tool_calls:
-            tool_call = response.message.tool_calls[0]
-            if tool_call.function.name == "submit_category_matches":
-                args = json.loads(tool_call.function.arguments)
-                matches = args["matches"]
-                return matches
-        else:
-            print("\n\nTool calling not working!!!\n\n")
 
         # Check if parsed is a tool call format: [{"name": "...", "arguments": {"matches": [...]}}]
         if isinstance(parsed, list) and len(parsed) > 0:

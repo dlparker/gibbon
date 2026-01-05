@@ -32,13 +32,11 @@ tools = [
                                     "description": "Confidence score from 0.0 to 1.0"
                                 }
                             },
-                            "required": ["category_name", "category_description", "confidence"],
-                            "additionalProperties": False
+                            "required": ["category_name", "category_description", "confidence"]
                         }
                     }
                 },
-                "required": ["matches"],
-                "additionalProperties": False
+                "required": ["matches"]
             }
         }
     }
