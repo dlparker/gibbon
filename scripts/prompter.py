@@ -9,8 +9,8 @@ from trial_sinks import SinkRegistry, TreeNavSink, NotesSink
 
 
 OLLAMA_URL = "http://192.168.100.242:11434"
-MODEL = "llama3.1:8b-instruct-q4_K_M"
-MODEL = "mistral:7b"
+#MODEL = "llama3.1:8b-instruct-q4_K_M"
+#MODEL = "mistral:7b"
 MODEL = "mistral:7b-instruct"
 
 class Prompter:

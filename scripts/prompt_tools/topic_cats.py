@@ -50,6 +50,7 @@ to detect specific command phrases in the first few words and match them to cate
 - Plus the highest one even if below 0.50
 - Sort by confidence descending
 - Use exact key and description from the category list
+- **CRITICAL**: For each match, you MUST extract and include the exact words or phrase from the transcript that led to this category match in the matching_excerpt field
 - ALWAYS use the submit_category_matches tool - NEVER output JSON directly
 
 **CRITICAL INSTRUCTION**:
