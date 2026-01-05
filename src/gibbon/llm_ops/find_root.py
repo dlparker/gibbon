@@ -59,7 +59,7 @@ async def send_to_llm(combined_text: str, ollama_url: str, model: str) -> dict:
         model=model,
         messages=messages,
         tools=tools,
-        format='json',  # Request JSON output format
+        # format='json',  # Removed: conflicts with tool calling
         options={
             'temperature': 0,  # Deterministic responses
         }

@@ -190,7 +190,7 @@ class TopicsOnly:
         prompt = main_template.format(draft=draft, topics_yaml=topics_yaml, num_topics=len(topic_paths))
         if context:
             prompt += context_part.format(context=context)
-        prompt += output_spec
+        prompt += output_spec_tool_call
         return prompt
 
     @staticmethod
@@ -220,17 +220,35 @@ class TopicsOnly:
         content = re.sub(r'```json\s*', '', content)
         content = re.sub(r'```\s*', '', content)
 
-        # Try to find JSON in the content (array or object)
-        # Look for [...] or {...}
-        json_match = re.search(r'(\[.*\]|\{.*\})', content, re.DOTALL)
+        # Try to find JSON arrays in the content
+        # Use a more robust approach: find all potential JSON arrays and try each
+        # Starting from the end (cleaner results typically come last)
+        array_matches = re.findall(r'\[\s*\{[^\[\]]*\}\s*(?:,\s*\{[^\[\]]*\}\s*)*\]', content, re.DOTALL)
 
-        if not json_match:
-            print(f"Warning: No JSON found in response: {content[:100]}")
-            return []
+        # Try parsing from the last match first (most likely to be clean output)
+        parsed = None
+        for json_str in reversed(array_matches):
+            try:
+                parsed = json.loads(json_str)
+                # If it parses and is a list, use it
+                if isinstance(parsed, list):
+                    break
+            except json.JSONDecodeError:
+                continue
 
-        json_str = json_match.group(1)
-
-        parsed = json.loads(json_str)
+        # Fallback to the old greedy approach if the new one didn't work
+        if parsed is None:
+            json_match = re.search(r'(\[.*\]|\{.*\})', content, re.DOTALL)
+            if not json_match:
+                print(f"Warning: No JSON found in response: {content[:100]}")
+                return []
+            json_str = json_match.group(1)
+            try:
+                parsed = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                print(f"Warning: Failed to parse JSON: {e}")
+                print(f"Content: {json_str[:200]}")
+                return []
 
         if response.message.tool_calls:
             tool_call = response.message.tool_calls[0]
@@ -240,7 +258,16 @@ class TopicsOnly:
                 return matches
         else:
             print("\n\nTool calling not working!!!\n\n")
-        
+
+        # Check if parsed is a tool call format: [{"name": "...", "arguments": {"matches": [...]}}]
+        if isinstance(parsed, list) and len(parsed) > 0:
+            first_item = parsed[0]
+            if isinstance(first_item, dict) and "name" in first_item and "arguments" in first_item:
+                if first_item.get("name") == "submit_category_matches":
+                    args = first_item["arguments"]
+                    if "matches" in args:
+                        return args["matches"]
+
         # Normalize to list format
         if isinstance(parsed, dict):
             # Single object, wrap in list
