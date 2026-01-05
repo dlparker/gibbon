@@ -7,6 +7,75 @@ from gibbon.llm_ops.find_root import send_to_llm
 
 
 
+system_message_template = """
+You are a transcript categorization assistant. You analyze voice-to-text transcripts
+to detect specific command phrases in the first few words and match them to categories.
+
+**YOUR BEHAVIOR**:
+- Focus ONLY on the first few words (the imperative phrase)
+- Ignore the remainder of the transcript
+- Score ALL provided categories (don't stop at first high match)
+- Return ranked results using the submit_category_matches tool
+
+**SCORING GUIDELINES**:
+- 0.9-1.0: Direct keyword match OR strong semantic match
+- 0.7-0.9: Related terms with clear semantic relation
+- 0.5-0.7: Indirect match or inferred intent
+- < 0.5: No useful match or different intent
+
+**CRITICAL - BE STRICT**:
+- Different actions (create vs edit vs select) should score LOW unless both match
+- Generic word overlap alone is not enough for high scores
+- Example: "Create topic" matches "Create a new topic" (0.95+), NOT "Edit essay" (0.2)
+
+**SPECIFICITY MATTERS**:
+- PRIORITIZE specific/unique words over generic ones
+- "copper production" → "copper" is SPECIFIC (discriminator), "production" is GENERIC (common)
+- Match on SPECIFIC words first: copper, iron, steel, coal, plastic, oil
+- Generic words (production, tools, resources, ore) are weak signals alone
+- Generic action words (create, edit, select, record) must match the category's action
+- If transcript has BOTH specific and generic words, match primarily on the specific word
+- Example: "copper production" should match "Copper ore mining" (0.9+), NOT "Plastics production" (0.3)
+
+**PATH MATCHING**:
+- Check if ANY element in the path matches transcript words
+- Path "root2 -> splits -> resource_grid -> metals -> mining -> copper" matches "copper" strongly
+- If keywords exist, they are suggestions, not requirements
+- "Iron mine" should match subjects with "iron" in path/description at 0.95+
+- "Dig for metal ore" should ALSO match mining subjects at 0.8+ (semantic understanding)
+- Transcription variations are OK: "mind" → "mine", "iran" → "iron"
+
+**OUTPUT RULES**:
+- Include all categories with confidence ≥ 0.50
+- Plus the highest one even if below 0.50
+- Sort by confidence descending
+- Use exact key and description from the category list
+- ALWAYS use the submit_category_matches tool - NEVER output JSON directly
+
+**CRITICAL INSTRUCTION**:
+DO NOT invent categories! Return results only for categories actually found in the provided list.
+"""
+
+user_message_template = """
+**AVAILABLE CATEGORIES** (exactly {num_topics} — use ONLY these):
+Each category has a fixed "key" that you MUST use for "category_name".
+
+{topics_yaml}
+
+**CRITICAL RULES FOR category_name**:
+- ALWAYS use the exact "key" field (e.g., "new_topic", "record_essay", "edit_essay")
+- NEVER use the path, description, or any invented version like "create_new_topic"
+- NEVER snake_case the description — copy the "key" exactly
+
+{context}
+
+----- Transcription begins ------
+{draft}
+----- Transcription ends ------
+
+Score all {num_topics} categories and call submit_category_matches with ranked results.
+"""
+
 main_template = """
 You are reviewing transcripts produced by a voice to text system to detect
 specific phrases that will trigger action in the calling system. These
@@ -17,7 +86,7 @@ which should clearly be an imperative phrase, and disregard the remainder
 of the transcript. The categories for matching are explained in the next section
 of this prompt. You will follow the provided scoring instructions to
 assign scores to the possible matches. You will follow the provided
-output rules for producing a report for the caller. 
+output rules for producing a report for the caller.
 
 
 **CATEGORIZATION**:
@@ -43,7 +112,7 @@ don't just stop when one gets a high score.
    - LLM should also match synonyms, related terms, semantic meaning
 3. Consider the full path for context
 4. Create a ranking of results by category from high score to low.
-5. Return ranked categories up to a total of five, in the specified output format. 
+5. Return ranked categories up to a total of five, in the specified output format.
 
 **CRITICAL INSTRUCTION!**
 DO NOT invent categories! Return results only for categories actually found in the above list
@@ -176,13 +245,34 @@ class TopicsOnly:
 
     @staticmethod
     def make_prompt_2(draft, topic_lines, context=None, use_tool_calling=True):
+        """
+        Build system and user messages for transcript categorization.
+
+        Returns:
+            dict with 'system' and 'user' keys containing the respective prompts
+        """
+        # Build user message with categories and transcript
         topics_yaml = f"'subjects':\n {'\n'.join(topic_lines)}"
-        prompt = main_template.format(draft=draft, topics_yaml=topics_yaml, num_topics=len(topic_lines))
+
+        context_section = ""
         if context:
-            prompt += context_template.format(context=context)
-        # Use tool calling or direct JSON based on flag
-        prompt += output_spec_tool_call if use_tool_calling else output_spec
-        return prompt
+            context_section = context_template.format(context=context)
+
+        user_msg = user_message_template.format(
+            draft=draft,
+            topics_yaml=topics_yaml,
+            num_topics=len(topic_lines),
+            context=context_section
+        )
+
+        # System message is constant (includes tool calling instruction)
+        system_msg = system_message_template
+
+        # Return both messages
+        return {
+            'system': system_msg,
+            'user': user_msg
+        }
 
     @staticmethod
     def parse_llm_response(response)  -> list[dict]:

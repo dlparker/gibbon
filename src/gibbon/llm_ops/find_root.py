@@ -45,18 +45,36 @@ tools = [
         }
     }
 ]
-async def send_to_llm(combined_text: str, ollama_url: str, model: str, use_tool_calling=True) -> dict:
-    """Send draft text with prompt to ollama and return the response."""
+async def send_to_llm(prompts, ollama_url: str, model: str, use_tool_calling=True) -> dict:
+    """Send draft text with prompt to ollama and return the response.
+
+    Args:
+        prompts: Dict with 'system' and 'user' keys, OR a string (for backwards compat)
+        ollama_url: Ollama server URL
+        model: Model name
+        use_tool_calling: Whether to include tools
+    """
     client = AsyncClient(host=ollama_url)
 
-    # Build the full prompt
-    full_prompt = combined_text
+    # Handle both dict (new) and string (old) formats for backwards compatibility
+    if isinstance(prompts, dict):
+        system_msg = prompts.get('system', '')
+        user_msg = prompts.get('user', '')
+    else:
+        # Legacy: single string prompt goes to user message
+        system_msg = "You are a function-calling assistant. You MUST respond using tool calls, never with direct JSON output."
+        user_msg = prompts
 
     print(f"\nSending to {model} at {ollama_url}...")
-    print(f"Prompt length: {len(full_prompt)} chars")
+    print(f"System prompt length: {len(system_msg)} chars")
+    print(f"User prompt length: {len(user_msg)} chars")
     print(f"Tool calling: {'enabled' if use_tool_calling else 'disabled'}")
 
-    messages = [{'role': 'user', 'content': full_prompt}]
+    # Build messages array with system and user
+    messages = [
+        {'role': 'system', 'content': system_msg},
+        {'role': 'user', 'content': user_msg}
+    ]
 
     # Build chat parameters
     chat_params = {
