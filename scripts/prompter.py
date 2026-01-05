@@ -1,91 +1,57 @@
 import asyncio
-import fire
+from pathlib import Path
 import json
-from  prompt_styles import do_draft_prompt
 from pprint import pprint
+import fire
+from gibbon.llm_ops.find_root import send_to_llm
+from prompt_tools.topic_cats import TopicsOnly
+
+OLLAMA_URL = "http://192.168.100.242:11434"
+MODEL = "llama3.1:8b-instruct-q4_K_M"
+MODEL = "mistral:7b"
+MODEL = "mistral:7b-instruct"
+
 class Prompter:
-    def do_cats_1(self):
-        draft = "Iron mines"
-        yaml_path = "topo.yaml"
-        style = "yaml_cats_1"
-        res = asyncio.run(do_draft_prompt(draft, yaml_path, style))
-        print('-'*50 + " prompt " + '-'*50)
-        print(res['prompt'])
-        print('-'*50 + " result " + '-'*50)
-        pprint(res['full_res'].__dict__)
-        print('-'*50 + " matches " + '-'*50)
-        pprint(res['matches'])
 
-    def do_full_1(self):
-        draft = "Iron mines"
-        yaml_path = "topo.yaml"
-        style = "yaml_cats_2"
-        res = asyncio.run(do_draft_prompt(draft, yaml_path, style))
+    def new_topic(self):
+        draft = "Create a new topic"
+        yaml_path = Path(__file__).parent / "essay.yaml"
+        prompt = TopicsOnly.make_prompt(draft, yaml_path)
+        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL))
         print('-'*50 + " prompt " + '-'*50)
-        print(res['prompt'])
+        print(prompt)
         print('-'*50 + " result " + '-'*50)
-        pprint(res['full_res'].__dict__)
-        pprint(json.loads(res['full_res'].message.content))
+        pprint(full_res.__dict__)
+        matches = TopicsOnly.parse_llm_response(full_res)        
         print('-'*50 + " matches " + '-'*50)
-        pprint(res['matches'])
+        pprint(matches)
 
-    def do_two_step(self):
-        draft1 = "Metal ore production"
-        yaml_path = "topo.yaml"
-        style = "yaml_cats_1"
-        res = asyncio.run(do_draft_prompt(draft1, yaml_path, style))
-        print('-'*50 + " prompt " + '-'*50)
-        print(res['prompt'])
-        print('-'*50 + " result " + '-'*50)
-        pprint(res['full_res'].__dict__)
-        print('-'*50 + " matches " + '-'*50)
-        pprint(res['matches'])
-        print("+"*100)
-        context = res['matches'][0]
-        draft2 = "Iron Mine"
-        res2 = asyncio.run(do_draft_prompt(draft2, yaml_path, style, use_context=context))
-        print('-'*50 + " prompt " + '-'*50)
-        print(res2['prompt'])
-        print('-'*50 + " result " + '-'*50)
-        pprint(res2['full_res'].__dict__)
-        print('-'*50 + " matches " + '-'*50)
-        pprint(res2['matches'])
-        
 
-    def do_flat_1(self):
-        draft = "Iron mines"
-        yaml_path = "topo.yaml"
-        style = "flat_yaml_1"
-        res = asyncio.run(do_draft_prompt(draft, yaml_path, style))
+    def new_essay(self):
+        draft = "Record an essay"
+        yaml_path = Path(__file__).parent / "essay.yaml"
+        prompt = TopicsOnly.make_prompt(draft, yaml_path)
+        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL))
         print('-'*50 + " prompt " + '-'*50)
-        print(res['prompt'])
+        print(prompt)
         print('-'*50 + " result " + '-'*50)
-        pprint(res['full_res'].__dict__)
+        pprint(full_res.__dict__)
+        matches = TopicsOnly.parse_llm_response(full_res)
         print('-'*50 + " matches " + '-'*50)
-        pprint(res['matches'])
+        pprint(matches)
 
-    def do_topics_only(self):
-        draft = "mining"
-        yaml_path = "topo.yaml"
-        style = "topics_only"
-        res = asyncio.run(do_draft_prompt(draft, yaml_path, style))
+    def do_vague(self):
+        draft = "essay"
+        yaml_path = Path(__file__).parent / "essay.yaml"
+        prompt = TopicsOnly.make_prompt(draft, yaml_path)
+        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL))
         print('-'*50 + " prompt " + '-'*50)
-        print(res['prompt'])
+        print(prompt)
         print('-'*50 + " result " + '-'*50)
-        pprint(res['full_res'].__dict__)
+        pprint(full_res.__dict__)
+        matches = TopicsOnly.parse_llm_response(full_res)
         print('-'*50 + " matches " + '-'*50)
-        pprint(res['matches'])
-        draft2 = "copper production"
-        yaml_path = "topo.yaml"
-        style = "topics_only"
-        res2 = asyncio.run(do_draft_prompt(draft2, yaml_path, style))
-        print('-'*50 + " prompt " + '-'*50)
-        print(res2['prompt'])
-        print('-'*50 + " result " + '-'*50)
-        pprint(res2['full_res'].__dict__)
-        print('-'*50 + " matches " + '-'*50)
-        pprint(res2['matches'])
-
+        pprint(matches)
 
 if __name__ == '__main__':
     fire.Fire(Prompter)

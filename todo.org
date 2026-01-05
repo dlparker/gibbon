@@ -19,8 +19,93 @@
 7. Sink should report back "continue" or "done". If "continue"
    and next draft does not trigger an "aim" change, then
    Sink gets a "continue_draft" call. Otherwise the
-   draft is "orphaned". 
-   
-   
-   
-   
+   draft is "orphaned".
+
+8. Essay-Based Topic Enrichment System (Research Project)
+   GOAL: Use rich semantic descriptions (essays) to improve categorization
+   accuracy and enable voice-driven content creation.
+
+   Phase 1: Manual Essay Writing & Infrastructure
+   1. Create topo_essays.yaml structure
+      - One essay per topic (user-written via dictation)
+      - Include what topic IS and what it's NOT
+      - Capture world-building context (e.g., copper mining gates
+        industrial expansion, requires transport infrastructure)
+      - 3-5 sentences per essay
+   2. Build essay management category/tool
+      - Meta-category for "add/edit essay for topic X"
+      - Tool to create/update essays via palaver dictation
+      - Store essays separately from topo.yaml
+
+   Phase 2: Keyword Generation from Essays
+   1. Build generate_keywords.py using high-order LLM (Claude API)
+      - Extract core terms (3-5): distinctive words (iron, magnetite)
+      - Extract process terms (3-5): actions (mining, extracting)
+      - Extract semantic variants (5-10): synonyms, typos, phrasings
+      - Extract negative keywords: what it's NOT (steel, refining)
+   2. Generate multiple keyword types and store in topo_keywords.yaml:
+      - core: most distinctive discriminators
+      - process: action verbs
+      - variants: synonyms and common phrasings
+      - negative: confusion terms to avoid
+   3. Support manual keyword overrides if needed
+
+   Phase 3: Enhanced Prompting with Essays
+   1. Update prompt_styles.py to optionally include essay snippets
+   2. Implement negative prompt support (like Stable Diffusion)
+      - "This IS iron mining, NOT steel production, NOT refining"
+   3. Test three approaches:
+      - Keywords only (baseline)
+      - Essays + keywords
+      - Keywords + negative prompts
+   4. Measure accuracy and speed trade-offs
+
+   Phase 4: Palaver Integration & Data Collection
+   1. Hook up categorization to palaver voice system
+   2. Implement logging system for all categorizations:
+      - Log transcript text
+      - Log all topic scores from LLM
+      - Log final category chosen
+      - Log timestamp
+      - Allow manual corrections by user
+   3. Build correction interface
+      - User can override wrong categorization
+      - System records: transcript, wrong choice, correct choice
+      - Track correction patterns
+
+   Phase 5: Analysis & Fuzzy Matching Study
+   1. Build analyze_transcripts.py for post-hoc analysis
+      - Run fuzzy matching (rapidfuzz) on logged transcripts
+      - Compare fuzzy scores vs LLM scores
+      - Identify where each approach works better
+   2. Find patterns in corrections:
+      - Common confusions (e.g., "production" matching wrong topics)
+      - Where specific vs generic words matter
+      - Transcription error patterns
+   3. Analyze if/where fuzzy matching could help:
+      - As pre-filter?
+      - As score booster for exact matches?
+      - As fallback when LLM uncertain?
+
+   Phase 6: Iterative Refinement & Active Learning
+   1. Refine essays based on confusion patterns
+      - Add disambiguating context where needed
+      - Strengthen negative examples
+      - Add domain-specific details
+   2. Regenerate keywords from updated essays
+   3. Consider fine-tuning approaches:
+      - Adjust keyword weights
+      - Add context-specific examples to prompts
+      - Build user correction patterns into system
+   4. Implement active learning:
+      - System suggests essay improvements based on errors
+      - User approves/edits suggestions via voice
+
+   NOTES:
+   - This is a research/experimentation phase
+   - Collect real usage data before optimizing
+   - Essays written by user capture intent and world-building context
+   - Each category will eventually connect to tools/actions
+   - Essay management itself becomes a category that triggers tools
+
+

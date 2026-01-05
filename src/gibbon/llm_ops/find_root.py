@@ -2,6 +2,47 @@ import asyncio
 
 from ollama import AsyncClient
 
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_category_matches",
+            "description": "Submit the ranked category matches for the transcript.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "matches": {
+                        "type": "array",
+                        "description": "List of matching categories, sorted by confidence descending",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "category_name": {
+                                    "type": "string",
+                                    "description": "Exact key from the category list (e.g. 'new_topic', 'copper')"
+                                },
+                                "category_description": {
+                                    "type": "string",
+                                    "description": "Exact description from the category list"
+                                },
+                                "confidence": {
+                                    "type": "number",
+                                    "minimum": 0.0,
+                                    "maximum": 1.0,
+                                    "description": "Confidence score from 0.0 to 1.0"
+                                }
+                            },
+                            "required": ["category_name", "category_description", "confidence"],
+                            "additionalProperties": False
+                        }
+                    }
+                },
+                "required": ["matches"],
+                "additionalProperties": False
+            }
+        }
+    }
+]
 async def send_to_llm(combined_text: str, ollama_url: str, model: str) -> dict:
     """Send draft text with prompt to ollama and return the response."""
     client = AsyncClient(host=ollama_url)
@@ -17,6 +58,7 @@ async def send_to_llm(combined_text: str, ollama_url: str, model: str) -> dict:
     response = await client.chat(
         model=model,
         messages=messages,
+        tools=tools,
         format='json',  # Request JSON output format
         options={
             'temperature': 0,  # Deterministic responses

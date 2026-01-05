@@ -96,6 +96,25 @@ class Arborist:
         return paths
 
     def get_topic_paths(self, keywords_file=None):
+        topic_paths = []
+        def recurse(node, current_path=[]):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    new_path = current_path + [key]
+                    is_topic = value.get('is_topic', False) or value.get('topic', False)  # Handle both variants
+                    if is_topic:
+                        topic_paths.append({
+                            'key': key,  # ← This is the critical short key!
+                            'path': ' -> '.join(new_path),
+                            'description': value.get('description', '')
+                        })
+                    if 'children' in value:
+                        recurse(value['children'], new_path)
+        for root_key, root_node in self.tree['roots'].items():
+            recurse({root_key: root_node})
+        return topic_paths
+
+    def get_topic_paths_old(self, keywords_file=None):
         """
         Returns only paths marked as topics (is_topic=true).
         Skips structural nodes.
