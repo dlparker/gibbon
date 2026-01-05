@@ -13,25 +13,11 @@ MODEL = "mistral:7b-instruct"
 
 class Prompter:
 
-    def new_topic(self):
+    def new_topic(self, use_tool_calling=True):
         draft = "Create a new topic"
         yaml_path = Path(__file__).parent / "essay.yaml"
-        prompt = TopicsOnly.make_prompt(draft, yaml_path)
-        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL))
-        print('-'*50 + " prompt " + '-'*50)
-        print(prompt)
-        print('-'*50 + " result " + '-'*50)
-        pprint(full_res.__dict__)
-        matches = TopicsOnly.parse_llm_response(full_res)        
-        print('-'*50 + " matches " + '-'*50)
-        pprint(matches)
-
-
-    def new_essay(self):
-        draft = "Record an essay"
-        yaml_path = Path(__file__).parent / "essay.yaml"
-        prompt = TopicsOnly.make_prompt(draft, yaml_path)
-        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL))
+        prompt = TopicsOnly.make_prompt(draft, yaml_path, use_tool_calling=use_tool_calling)
+        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL, use_tool_calling=use_tool_calling))
         print('-'*50 + " prompt " + '-'*50)
         print(prompt)
         print('-'*50 + " result " + '-'*50)
@@ -40,11 +26,25 @@ class Prompter:
         print('-'*50 + " matches " + '-'*50)
         pprint(matches)
 
-    def do_vague(self):
+
+    def new_essay(self, use_tool_calling=True):
+        draft = "Record an essay"
+        yaml_path = Path(__file__).parent / "essay.yaml"
+        prompt = TopicsOnly.make_prompt(draft, yaml_path, use_tool_calling=use_tool_calling)
+        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL, use_tool_calling=use_tool_calling))
+        print('-'*50 + " prompt " + '-'*50)
+        print(prompt)
+        print('-'*50 + " result " + '-'*50)
+        pprint(full_res.__dict__)
+        matches = TopicsOnly.parse_llm_response(full_res)
+        print('-'*50 + " matches " + '-'*50)
+        pprint(matches)
+
+    def do_vague(self, use_tool_calling=True):
         draft = "essay"
         yaml_path = Path(__file__).parent / "essay.yaml"
-        prompt = TopicsOnly.make_prompt(draft, yaml_path)
-        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL))
+        prompt = TopicsOnly.make_prompt(draft, yaml_path, use_tool_calling=use_tool_calling)
+        full_res = asyncio.run(send_to_llm(prompt, OLLAMA_URL, MODEL, use_tool_calling=use_tool_calling))
         print('-'*50 + " prompt " + '-'*50)
         print(prompt)
         print('-'*50 + " result " + '-'*50)

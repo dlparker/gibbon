@@ -189,14 +189,15 @@ Use exact key and description from the list.
 class TopicsOnly:
 
     @staticmethod
-    def make_prompt(draft, yaml_path, context=None, keywords_file=None):
+    def make_prompt(draft, yaml_path, context=None, keywords_file=None, use_tool_calling=True):
         arbor = Arborist(yaml_path)
         topic_paths = arbor.get_topic_paths(keywords_file=keywords_file)
         topics_yaml = yaml.dump({'subjects': topic_paths}, sort_keys=False)
         prompt = main_template.format(draft=draft, topics_yaml=topics_yaml, num_topics=len(topic_paths))
         if context:
             prompt += context_part.format(context=context)
-        prompt += output_spec_tool_call
+        # Use tool calling or direct JSON based on flag
+        prompt += output_spec_tool_call if use_tool_calling else output_spec
         return prompt
 
     @staticmethod

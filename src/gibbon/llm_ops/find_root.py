@@ -41,7 +41,7 @@ tools = [
         }
     }
 ]
-async def send_to_llm(combined_text: str, ollama_url: str, model: str) -> dict:
+async def send_to_llm(combined_text: str, ollama_url: str, model: str, use_tool_calling=True) -> dict:
     """Send draft text with prompt to ollama and return the response."""
     client = AsyncClient(host=ollama_url)
 
@@ -50,16 +50,22 @@ async def send_to_llm(combined_text: str, ollama_url: str, model: str) -> dict:
 
     print(f"\nSending to {model} at {ollama_url}...")
     print(f"Prompt length: {len(full_prompt)} chars")
+    print(f"Tool calling: {'enabled' if use_tool_calling else 'disabled'}")
 
     messages = [{'role': 'user', 'content': full_prompt}]
 
-    response = await client.chat(
-        model=model,
-        messages=messages,
-        tools=tools,
-        # format='json',  # Removed: conflicts with tool calling
-        options={
+    # Build chat parameters
+    chat_params = {
+        'model': model,
+        'messages': messages,
+        'options': {
             'temperature': 0,  # Deterministic responses
         }
-    )
+    }
+
+    # Only include tools if tool calling is enabled
+    if use_tool_calling:
+        chat_params['tools'] = tools
+
+    response = await client.chat(**chat_params)
     return response
