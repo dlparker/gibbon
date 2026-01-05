@@ -175,6 +175,16 @@ class TopicsOnly:
         return prompt
 
     @staticmethod
+    def make_prompt_2(draft, topic_lines, context=None, use_tool_calling=True):
+        topics_yaml = f"'subjects':\n {'\n'.join(topic_lines)}"
+        prompt = main_template.format(draft=draft, topics_yaml=topics_yaml, num_topics=len(topic_lines))
+        if context:
+            prompt += context_template.format(context=context)
+        # Use tool calling or direct JSON based on flag
+        prompt += output_spec_tool_call if use_tool_calling else output_spec
+        return prompt
+
+    @staticmethod
     def parse_llm_response(response)  -> list[dict]:
         """
         Parse LLM response to extract category matches.
@@ -208,6 +218,21 @@ class TopicsOnly:
         else:
             content = str(response)
 
+        # sometimes it uses the tool but does not report that it used it,
+        # so see if that happend
+        a_dict = None
+        try:
+            a_dict = json.loads(content)
+        except:
+            pass
+        if a_dict:
+            first =  a_dict[0]
+            if first['name'] == "submit_category_matches" and "arguments" in first:
+                if 'matches' in first['arguments']:
+                    print("\n\nTool calling reports not working, but did work????\n\n")
+                    matches = first['arguments']["matches"]
+                    return matches
+                
         print("\n\nTool calling not working, using fallback parser...\n\n")
 
         # Remove markdown code blocks if present
