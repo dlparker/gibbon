@@ -1,4 +1,5 @@
 import asyncio
+from typing import Optional
 
 from ollama import AsyncClient
 
@@ -45,30 +46,19 @@ tools = [
         }
     }
 ]
-async def send_to_llm(prompts, ollama_url: str, model: str, use_tool_calling=True) -> dict:
-    """Send draft text with prompt to ollama and return the response.
-
-    Args:
-        prompts: Dict with 'system' and 'user' keys, OR a string (for backwards compat)
-        ollama_url: Ollama server URL
-        model: Model name
-        use_tool_calling: Whether to include tools
-    """
+async def send_to_llm(prompts:dict,  ollama_url: str, model: str, tools:Optional[list[dict]]=None) -> dict:
     client = AsyncClient(host=ollama_url)
 
     # Handle both dict (new) and string (old) formats for backwards compatibility
-    if isinstance(prompts, dict):
-        system_msg = prompts.get('system', '')
-        user_msg = prompts.get('user', '')
-    else:
-        # Legacy: single string prompt goes to user message
+    system_msg = prompts.get('system', '')
+    if system_msg == '' and tools:
         system_msg = "You are a function-calling assistant. You MUST respond using tool calls, never with direct JSON output."
-        user_msg = prompts
+    user_msg = prompts.get('user', '')
 
     print(f"\nSending to {model} at {ollama_url}...")
     print(f"System prompt length: {len(system_msg)} chars")
     print(f"User prompt length: {len(user_msg)} chars")
-    print(f"Tool calling: {'enabled' if use_tool_calling else 'disabled'}")
+    print(f"Tool calling: {'enabled' if tools else 'disabled'}")
 
     # Build messages array with system and user
     messages = [
@@ -86,7 +76,7 @@ async def send_to_llm(prompts, ollama_url: str, model: str, use_tool_calling=Tru
     }
 
     # Only include tools if tool calling is enabled
-    if use_tool_calling:
+    if tools:
         chat_params['tools'] = tools
 
     response = await client.chat(**chat_params)
