@@ -58,6 +58,9 @@ def setup_logging(default_level="WARNING", info_loggers=None, debug_loggers=None
 
 def get_loggers():
     res  = []
+    res.append(logging.getLogger("AimSelect"))
+    res.append(logging.getLogger("LLMSingleCall"))
+
     return res
 
 

@@ -49,6 +49,11 @@ class Listener(PalaverEventListener):
                 logger.error("out of order arrival of new draft, didn't get end of last one")
             self.current_draft = event.draft
         if isinstance(event, DraftEndEvent):
+            # If we never tried to match this draft, do it now before ending
+            if not self.matched_level and len(self.in_draft_text_events) > 0:
+                logger.info('Draft ended without match attempt, trying match on %s', self.in_draft_text_events)
+                self.matched_level = await self.l1_matcher.try_match(self.in_draft_text_events,
+                                                                     event.draft)
             self.done_drafts.append(event.draft)
             self.current_draft = None
             self.in_draft_text_events = []
@@ -89,9 +94,12 @@ async def main_loop():
             ws_client.start_listening()
             while True:
                 await asyncio.sleep(1)
+
 async def main():
 
-    setup_logging(more_loggers=[logger,], debug_loggers=[logger.name,])
+    setup_logging(more_loggers=[logger,],
+                  info_loggers=[logger.name,],
+                  debug_loggers=["AimSelect",])
     background_error_dict = None
     class ErrorCallback(TopLevelCallback):
         async def on_error(self, error_dict: dict):

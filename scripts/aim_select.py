@@ -1,8 +1,11 @@
 from typing import Optional
+import logging
 from dataclasses import dataclass, asdict
 from palaver_shared.text_events import TextEvent
 from palaver_shared.draft_events import Draft
-from gibbon.llm_ops.find_root import send_to_llm
+from gibbon.llm_ops.single_call import send_to_llm
+
+logger = logging.getLogger("AimSelect")
 
 @dataclass
 class AimDef:
@@ -59,14 +62,14 @@ class KBoardTool(AimTool):
         return AimToolResponse(success=True, can_continue=True)
 
     def end_draft(self, draft):
-        self.ops.append[draft.full_text]
+        self.ops.append(draft.full_text)
         return AimToolResponse(success=True, can_continue=True)
 
     def continuation_draft(self, draft):
         if not draft.end_text:
             self.draft = draft
             return AimToolResponse(success=False, can_continue=True)
-        self.ops.append[draft.full_text]
+        self.ops.append(draft.full_text)
         return AimToolResponse(success=True, can_continue=True)
 
 class ClaudeCodeTool(AimTool):
@@ -89,14 +92,14 @@ class ClaudeCodeTool(AimTool):
         return AimToolResponse(success=True, can_continue=True)
 
     def end_draft(self, draft):
-        self.ops.append[draft.full_text]
+        self.ops.append(draft.full_text)
         return AimToolResponse(success=True, can_continue=True)
 
     def continuation_draft(self, draft):
         if not draft.end_text:
             self.draft = draft
             return AimToolResponse(success=False, can_continue=True)
-        self.ops.append[draft.full_text]
+        self.ops.append(draft.full_text)
         return AimToolResponse(success=True, can_continue=True)
 
 class MetaAimTool(AimTool):
@@ -117,14 +120,14 @@ class MetaAimTool(AimTool):
         return AimToolResponse(success=True, can_continue=True)
 
     def end_draft(self, draft):
-        self.ops.append[draft.full_text]
+        self.ops.append(draft.full_text)
         return AimToolResponse(success=True, can_continue=True)
 
     def continuation_draft(self, draft):
         if not draft.end_text:
             self.draft = draft
             return AimToolResponse(success=False, can_continue=True)
-        self.ops.append[draft.full_text]
+        self.ops.append(draft.full_text)
         return AimToolResponse(success=True, can_continue=True)
     
 
@@ -148,7 +151,7 @@ class AimLevel:
         else:
             transcript = ' '
             for te in text_events:
-                if not transcript[-1].isspace() and not te.text[0].isspace:
+                if not transcript[-1].isspace() and not te.text[0].isspace():
                     transcript += ' '
                 transcript += te.text
         intent_categories = "Available Intent Categories:\n"
@@ -159,13 +162,21 @@ class AimLevel:
             intent_categories += "\n"
 
         
+        system_prompt = "You are an intent classification system. You must analyze transcripts and classify them using the classify_intent tool. " \
+                       "IMPORTANT: You must include all required fields in your response: intent_key, confidence, reasoning, and matched_excerpt. " \
+                       "The matched_excerpt field should contain the specific portion of the transcript that led to your classification decision."
+
         prompt =  "Here are the available intent categories:\n"
         prompt += f"\n{intent_categories}\n"
         prompt += "Please classify this voice to text transcript to identify the high-level intent:\n"
         prompt += f"\n{transcript}\n"
-        prompt += "Use the classify_intent tool to return your analysis."
-        result = await send_to_llm({'user':prompt}, self.url, self.model, level_1_llm_tools)
-        print(result)
+        prompt += "\nUse the classify_intent tool to return your analysis."
+        result = await send_to_llm({'system': system_prompt, 'user':prompt}, self.url, self.model, level_1_llm_tools)
+        logger.debug("%s", prompt)
+        logger.debug("%s", result)
+        if not logger.isEnabledFor(logging.DEBUG):
+            logger.info("%s", result)
+        return result
             
         
 level_1_llm_tools = [
@@ -190,9 +201,13 @@ level_1_llm_tools = [
                     "reasoning": {
                         "type": "string",
                         "description": "Brief explanation of why this intent was selected"
+                    },
+                    "matched_excerpt": {
+                        "type": "string",
+                        "description": "The portion of the transcript that was matched to make this classification. This will be stripped off before further processing by the attached tool."
                     }
                 },
-                "required": ["intent_key", "confidence", "reasoning"]
+                "required": ["intent_key", "confidence", "reasoning", "matched_excerpt"]
             }
         }
     }
