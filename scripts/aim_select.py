@@ -177,8 +177,6 @@ class AimLevel:
             logger.info("sending prompt to llm")
         response = await send_to_llm({'system': system_prompt, 'user':prompt}, self.url, self.model, level_1_llm_tools)
         logger.debug("%s", pformat(response))
-        if not logger.isEnabledFor(logging.DEBUG):
-            logger.info("%s", response)
         result = None
         if response.message:
             if response.message.tool_calls:
@@ -187,6 +185,8 @@ class AimLevel:
                         result = tc.function.arguments
                         
         logger.info("returning %s",result)
+        if not logger.isEnabledFor(logging.DEBUG) and result is None:
+            logger.info("%s", response)
         return result
             
         

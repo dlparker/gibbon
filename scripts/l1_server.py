@@ -55,7 +55,7 @@ class Listener(PalaverEventListener):
             if not self.matched_level and len(self.in_draft_text_events) > 0:
                 logger.info('Draft ended without match attempt, trying match on %s', self.in_draft_text_events)
                 await self.try_match()
-            self.done_drafts.append(event.draft)
+            self.done_drafts.append(dict(draft=event.draft, matched_levels=[self.matched_level,]))
             self.current_draft = None
             self.in_draft_text_events = []
             self.matched_level = None
@@ -75,14 +75,21 @@ class Listener(PalaverEventListener):
         self.last_try_time = time.time()
         if self.matched_level:
             if self.matched_level['confidence'] > 0.70:
-                logger.info("matched %s", self.matched_level['intent_key'])
-                await self.report_match()
+                try:
+                    logger.info("matched %s", self.matched_level['intent_key'])
+                    await self.report_match()
+                except Exception as e:
+                    breakpoint()
+                    print(e)
 
     async def report_match(self):
-        if self.rest_client is None:
-            self.rest_client = PalaverRestClient("http://localhost:8000")
-            await self.rest_client.connect()
+        if self.matched_level:
+            if self.rest_client is None:
+                logger.info("making connection to %s", self.palaver_url)
+                self.rest_client = PalaverRestClient("http://localhost:8000")
+                await self.rest_client.connect()
             for_speech = f"Good matched! key was, {" ".join(self.matched_level['intent_key'].split('_'))}"
+            logger.info("Sending speech text %s to palaver", for_speech)
             await self.rest_client.text_to_speech(for_speech)
         
     async def on_audio_event(self, event: AudioEvent):
