@@ -1,5 +1,6 @@
 from typing import Optional
 import logging
+from pprint import pformat
 from dataclasses import dataclass, asdict
 from palaver_shared.text_events import TextEvent
 from palaver_shared.draft_events import Draft
@@ -171,11 +172,21 @@ class AimLevel:
         prompt += "Please classify this voice to text transcript to identify the high-level intent:\n"
         prompt += f"\n{transcript}\n"
         prompt += "\nUse the classify_intent tool to return your analysis."
-        result = await send_to_llm({'system': system_prompt, 'user':prompt}, self.url, self.model, level_1_llm_tools)
         logger.debug("%s", prompt)
-        logger.debug("%s", result)
         if not logger.isEnabledFor(logging.DEBUG):
-            logger.info("%s", result)
+            logger.info("sending prompt to llm")
+        response = await send_to_llm({'system': system_prompt, 'user':prompt}, self.url, self.model, level_1_llm_tools)
+        logger.debug("%s", pformat(response))
+        if not logger.isEnabledFor(logging.DEBUG):
+            logger.info("%s", response)
+        result = None
+        if response.message:
+            if response.message.tool_calls:
+                for tc in response.message.tool_calls:
+                    if tc.function.arguments:
+                        result = tc.function.arguments
+                        
+        logger.info("returning %s",result)
         return result
             
         
@@ -212,3 +223,34 @@ level_1_llm_tools = [
         }
     }
 ]
+
+
+"""
+result_example = {
+    model='mistral:7b-instruct'
+    created_at='2026-01-09T18:20:43.982702469Z'
+    done=True done_reason='stop'
+    total_duration=1575226232
+    load_duration=26363135
+    prompt_eval_count=527
+    prompt_eval_duration=42591777
+    eval_count=77
+    eval_duration=1481660420
+    message=Message(role='assistant',
+                    content='',
+                    thinking=None,
+                    images=None,
+                    tool_name=None,
+                    tool_calls=[
+                        ToolCall(function=
+                                 Function(name='classify_intent',
+                                          arguments={'confidence': 0.95,
+                                                     'intent_key': 'claude_code_request',
+                                                     'matched_excerpt': 'Voice to text code',
+                                                     'reasoning': "The user is asking for voice to text code, which falls under the 'claude_code_request' category."}
+                                          )
+                                 )
+                    ]
+                    )
+}
+"""

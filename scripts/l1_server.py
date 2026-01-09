@@ -29,12 +29,14 @@ class L1Matcher:
                               [KBoardTool(), ClaudeCodeTool(), MetaAimTool()])
         
     async def try_match(self, texts:list[TextEvent], draft:Draft):
-        await self.level.try_match(texts, draft)
+        return await self.level.try_match(texts, draft)
     
 class Listener(PalaverEventListener):
 
-    def __init__(self, l1_matcher):
+    def __init__(self, l1_matcher, palaver_url):
         super().__init__()
+        self.palaver_url = palaver_url
+        self.rest_client = None
         self.l1_matcher = l1_matcher
         self.current_draft = None
         self.matched_level = None
@@ -52,8 +54,7 @@ class Listener(PalaverEventListener):
             # If we never tried to match this draft, do it now before ending
             if not self.matched_level and len(self.in_draft_text_events) > 0:
                 logger.info('Draft ended without match attempt, trying match on %s', self.in_draft_text_events)
-                self.matched_level = await self.l1_matcher.try_match(self.in_draft_text_events,
-                                                                     event.draft)
+                await self.try_match()
             self.done_drafts.append(event.draft)
             self.current_draft = None
             self.in_draft_text_events = []
@@ -67,6 +68,23 @@ class Listener(PalaverEventListener):
             return
         self.in_draft_text_events.append(event)
 
+    async def try_match(self):
+        logger.info('Trying match on %s', self.in_draft_text_events)
+        self.matched_level = await self.l1_matcher.try_match(self.in_draft_text_events,
+                                                             self.current_draft)
+        self.last_try_time = time.time()
+        if self.matched_level:
+            if self.matched_level['confidence'] > 0.70:
+                logger.info("matched %s", self.matched_level['intent_key'])
+                await self.report_match()
+
+    async def report_match(self):
+        if self.rest_client is None:
+            self.rest_client = PalaverRestClient("http://localhost:8000")
+            await self.rest_client.connect()
+            for_speech = f"Good matched! key was, {" ".join(self.matched_level['intent_key'].split('_'))}"
+            await self.rest_client.text_to_speech(for_speech)
+        
     async def on_audio_event(self, event: AudioEvent):
         if isinstance(event, AudioChunkEvent):
             if event.in_speech:
@@ -75,22 +93,20 @@ class Listener(PalaverEventListener):
         if self.current_draft and len(self.in_draft_text_events) > 0:
             if self.last_speech_time and time.time() - self.last_speech_time >= 2.0 and not self.matched_level:
                 if not self.last_try_time or self.last_speech_time > self.last_try_time:
-                    logger.info('Trying match on %s', self.in_draft_text_events)
-                    self.matched_level = await self.l1_matcher.try_match(self.in_draft_text_events,
-                                                                         self.current_draft)
-                    self.last_try_time = time.time()
+                    await self.try_match()
 
 async def main_loop():
 
-    rest_cli = PalaverRestClient(palaver)
     async with PalaverRestClient("http://localhost:8000") as client:
         drafts = await client.fetch_all_drafts(limit=1)
         if drafts:
             logger.debug(drafts[0])
         else:
             logger.debug("No draft found")
-        async with PalaverWebSocketClient(listener=Listener(L1Matcher()),
+        listener = Listener(L1Matcher(), palaver_url="http://localhost:8000")
+        async with PalaverWebSocketClient(listener=listener,
                                           palaver_url="http://localhost:8000") as ws_client:
+            logger.info("Starting websocket listener")
             ws_client.start_listening()
             while True:
                 await asyncio.sleep(1)
