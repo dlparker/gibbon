@@ -17,6 +17,7 @@ authors = [
 dependencies = [
     "fire>=0.7.1",
     "httpx>=0.28.1",
+    "jsonlines>=4.0.0",
     "ollama>=0.6.1",
     "pyyaml>=6.0.3",
     "rapidfuzz>=3.14.3",

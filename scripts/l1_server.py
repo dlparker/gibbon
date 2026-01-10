@@ -9,7 +9,8 @@ from palaver_shared.top_error import TopErrorHandler, TopLevelCallback
 from palaver_shared.text_events import TextEvent
 from palaver_shared.draft_events import DraftEvent, DraftStartEvent, DraftEndEvent, Draft
 from palaver_shared.audio_events import AudioEvent, AudioChunkEvent
-from aim_select import AimLevel, KBoardTool, ClaudeCodeTool, MetaAimTool
+from aim_select import AimToolbox, ClaudeCodeTool, MetaAimTool
+from kboard_tool import KBoardTool
 
 from loggers import setup_logging
 
@@ -20,30 +21,21 @@ MODEL = "mistral:7b-instruct"
 
 logger = logging.getLogger('L1Server')
 
-class L1Matcher:
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.level = AimLevel(OLLAMA_URL,
-                              MODEL,
-                              [KBoardTool(), ClaudeCodeTool(), MetaAimTool()])
-        
-    async def try_match(self, texts:list[TextEvent], draft:Draft):
-        return await self.level.try_match(texts, draft)
-    
+   
 class Listener(PalaverEventListener):
 
-    def __init__(self, l1_matcher, palaver_url):
+    def __init__(self, palaver_url: str, toolbox: AimToolbox):
         super().__init__()
         self.palaver_url = palaver_url
         self.rest_client = None
-        self.l1_matcher = l1_matcher
         self.current_draft = None
         self.matched_level = None
         self.in_draft_text_events = []
         self.done_drafts = []
         self.last_speech_time = None
         self.last_try_time = None
+        self.toolbox = toolbox
+        
         
     async def on_draft_event(self, event:DraftEvent):
         if isinstance(event, DraftStartEvent):
@@ -70,8 +62,7 @@ class Listener(PalaverEventListener):
 
     async def try_match(self):
         logger.info('Trying match on %s', self.in_draft_text_events)
-        self.matched_level = await self.l1_matcher.try_match(self.in_draft_text_events,
-                                                             self.current_draft)
+        self.matched_level  = await self.toolbox.try_match(self.in_draft_text_events, self.current_draft)
         self.last_try_time = time.time()
         if self.matched_level:
             if self.matched_level['confidence'] > 0.70:
@@ -110,7 +101,9 @@ async def main_loop():
             logger.debug(drafts[0])
         else:
             logger.debug("No draft found")
-        listener = Listener(L1Matcher(), palaver_url="http://localhost:8000")
+        toolbox = AimToolbox(OLLAMA_URL, MODEL,
+                             [KBoardTool(), ClaudeCodeTool(), MetaAimTool()])
+        listener = Listener("http://localhost:8000", toolbox)
         async with PalaverWebSocketClient(listener=listener,
                                           palaver_url="http://localhost:8000") as ws_client:
             logger.info("Starting websocket listener")

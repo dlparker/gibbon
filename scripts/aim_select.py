@@ -28,7 +28,7 @@ class AimTool:
         self.simple_target = simple_target
         self.draft = None
         
-    def get_aim_def(self):
+    def get_aim_defs(self):
         raise Exception('child must implement')
 
     def start_draft(self, draft):
@@ -45,48 +45,22 @@ class AimTool:
         return AimToolResponse(success=False, can_continue=False)
 
         
-class KBoardTool(AimTool):
-
-    def __init__(self):
-        self.draft = None
-        self.ops = []
-        
-    def get_aim_def(self):
-        return AimDef(
-            unique_name = 'project_management',
-            description =  'User wants to interact with tasks or projects - create, search, modify, or query status of tasks/projects.',
-            examples = '"Add task to fix door", "What tasks mention garage?", "Show project status", "Mark call as done"'
-            )
-
-    def start_draft(self, draft):
-        self.draft = draft
-        return AimToolResponse(success=True, can_continue=True)
-
-    def end_draft(self, draft):
-        self.ops.append(draft.full_text)
-        return AimToolResponse(success=True, can_continue=True)
-
-    def continuation_draft(self, draft):
-        if not draft.end_text:
-            self.draft = draft
-            return AimToolResponse(success=False, can_continue=True)
-        self.ops.append(draft.full_text)
-        return AimToolResponse(success=True, can_continue=True)
-
 class ClaudeCodeTool(AimTool):
 
 
     def __init__(self):
         self.draft = None
         self.ops = []
+        self.current_level = 0
         
-    def get_aim_def(self):
-        return AimDef(
-            unique_name = 'claude_code_request',
-            description =  'User wants to do claude code planning - author design documents, run tech research, create development stories.',
-            examples = '"Why is this code needed?", "How can I use this python library", ' \
-            '"Create story to for code for palaver project", "Create coding tasks based on story 10", "How can I get this property from a GNUCash file"'
-            )
+    def get_aim_defs(self):
+        return [
+            AimDef(unique_name = 'claude_code_request',
+                   description =  'User wants to do claude code planning - author design documents, run tech research, create development stories.',
+                   examples = '"Why is this code needed?", "How can I use this python library", ' \
+                   '"Create story to for code for palaver project", "Create coding tasks based on story 10", "How can I get this property from a GNUCash file"'
+                   )
+            ]
     
     def start_draft(self, draft):
         self.draft = draft
@@ -109,12 +83,13 @@ class MetaAimTool(AimTool):
         self.draft = None
         self.ops = []
         
-    def get_aim_def(self):
-        return AimDef(
-            unique_name = 'post_mark_drafts',
-            description =  'User is giving instructions about how to handle a previous draft or modify system behavior.',
-            examples = "'Change last draft to project management category', 'Reprocess last draft with this prefix, add code to palaver"
-            )
+    def get_aim_defs(self):
+        return [
+            AimDef(unique_name = 'post_mark_drafts',
+                   description =  'User is giving instructions about how to handle a previous draft or modify system behavior.',
+                   examples = "'Change last draft to project management category', 'Reprocess last draft with this prefix, add code to palaver"
+                   )
+            ]
 
     def start_draft(self, draft):
         self.draft = draft
@@ -132,18 +107,18 @@ class MetaAimTool(AimTool):
         return AimToolResponse(success=True, can_continue=True)
     
 
-class AimLevel:
+class AimToolbox:
 
-    def __init__(self, url:str, model:str, tools:list[AimTool], parent:Optional['AimLevel']=None):
+    def __init__(self, url:str, model:str, tools:list[AimTool]):
         self.url = url
         self.model = model
         self.tools = tools
-        self.parent = parent
 
     def get_categories(self):
         blocks = []
         for tool in self.tools:
-            blocks.append(asdict(tool.get_aim_def()))
+            for aim_def in tool.get_aim_defs():
+                blocks.append(asdict(aim_def))
         return blocks
     
     async def try_match(self, text_events:list[TextEvent], draft:Draft):
