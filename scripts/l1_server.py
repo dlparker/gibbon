@@ -31,7 +31,6 @@ class Listener(PalaverEventListener):
         self.palaver_url = palaver_url
         self.rest_client = None
         self.done_drafts = []
-        self.last_try_time = 0.0
         self.toolbox = toolbox
         self.draft_matcher = DraftMatcher(self.toolbox)
         
@@ -46,19 +45,13 @@ class Listener(PalaverEventListener):
                 ctxt = self.draft_matcher.finish_draft_context()
                 if ctxt:
                     logger.info("draft result %s", ctxt)
-            self.last_try_time = 0.0
 
     async def on_text_event(self, event: TextEvent):
         self.draft_matcher.new_text_event(event)
         logger.info(event)
         async def check_try(event):
             await asyncio.sleep(1)
-            # see if we are processing a draft
-            if self.draft_matcher.current_draft and self.draft_matcher.text_events:
-                last_text_time = self.draft_matcher.text_events[-1].audio_end_time
-                now = time.time() 
-                if now - last_text_time >= 1.0 and self.last_try_time < last_text_time:
-                    await self.try_match()
+            await self.try_match()
         get_error_handler().wrap_task(lambda event=event: check_try(event))
 
     async def try_match(self):
@@ -70,8 +63,6 @@ class Listener(PalaverEventListener):
         if self.draft_matcher.draft_context and self.draft_matcher.draft_context.try_needed():
             await self.rest_client.play_signal_sound('working')
             match_res = await self.draft_matcher.try_match()
-            last_text_time = self.draft_matcher.text_events[-1].audio_end_time
-            self.last_try_time = last_text_time
             if not match_res:
                 logger.info("no match on try_match call")
                 return None
