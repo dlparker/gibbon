@@ -25,6 +25,19 @@ class DraftMatches:
     draft: Draft
     matches: list[MatchResult] = field(default_factory=list[MatchResult])
         
+class DraftContex:
+
+    def __init__(self, draft:Draft):
+        self.draft = draft
+        self.matches = []
+        self.text_events = []
+        self.last_check_text_index = -1
+
+    def try_needed(self):
+        if len(self.matches) == 0 and self.last_check_text_index < len(self.text_events) -1 :
+            return True
+        return False
+    
 @dataclass
 class AimDef:
     unique_name: str
@@ -325,13 +338,6 @@ class AimToolbox:
         else:
             return await self.tai_match_call(transcript)
         
-class DraftContex:
-
-    def __init__(self, draft:Draft):
-        self.draft = draft
-        self.matches = []
-        self.text_events = []
-    
 class DraftMatcher:
     
     def __init__(self, toolbox: AimToolbox):
@@ -383,6 +389,8 @@ class DraftMatcher:
                 match_res.excerpt_pos = pos
                 pos += len(match_res.key_phrase)
 
+        ctxt = self.draft_context
+        ctxt.last_check_text_index = len(ctxt.text_events) - 1 
         match_res = await self.toolbox.match_call(transcript[pos:])
         if not match_res:
             return None
