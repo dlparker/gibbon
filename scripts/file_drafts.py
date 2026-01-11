@@ -112,17 +112,24 @@ class FileDraftRunner:
             lines = f.readlines()
 
         draft = Draft(start_text="Freddy take this down")
-        draft_start = DraftStartEvent(draft=draft)
-        await self.listener.on_draft_event(draft_start)
+        ctxt = self.draft_matcher.new_draft(draft)
 
         for line in lines:
             line = line.strip()
             if line:  # Skip empty lines
                 text_event = TextEvent(text=line)
-                await self.listener.on_text_event(text_event)
+                ctxt = self.draft_matcher.new_text_event(text_event)
 
-        draft_end = DraftEndEvent(draft=draft)
-        await self.listener.on_draft_event(draft_end)
+        await self.draft_matcher.try_match()
+        ctxt = self.draft_matcher.draft_context
+        assert len(ctxt.matches) == 1
+        top_match = ctxt.matches[0]
+        pprint(top_match)
+        await self.draft_matcher.try_match()
+        ctxt = self.draft_matcher.draft_context
+        assert len(ctxt.matches) == 2
+        top_match = ctxt.matches[1]
+        pprint(top_match)
         
         
         

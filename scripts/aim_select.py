@@ -11,7 +11,6 @@ from gibbon.llm_ops.together_call import send_to_together_ai
 
 logger = logging.getLogger("AimSelect")
 
-CALL_MODE=os.environ.get("LLM_CALL_CODE", "ollama")
 
 @dataclass
 class MatchResult:
@@ -127,10 +126,14 @@ class MetaAimTool(AimTool):
 
 class AimToolbox:
 
-    def __init__(self, url:str, model:str, tools:list[AimTool]):
+    def __init__(self, url:str, model:str, tools:list[AimTool], call_mode:Optional[str]=None):
         self.url = url
         self.model = model
         self.tools = tools
+        if call_mode:
+            self.call_mode = call_mode
+        else:
+            self.call_mode = os.environ.get("LLM_CALL_CODE", "ollama")
 
     def get_categories(self):
         blocks = []
@@ -205,6 +208,7 @@ class AimToolbox:
 
     async def ollama_match_call(self, transcript):
         prompts = self.make_prompts(transcript, "soft")
+        logger.info("Calling ollama %s %s", self.url, self.model)
         response = await send_to_ollama(prompts, self.url, self.model, level_1_llm_tools)
         logger.debug("%s", pformat(response))
         result = None
@@ -255,10 +259,12 @@ class AimToolbox:
 
     async def tai_match_call(self, transcript):
         prompts = self.make_prompts(transcript)
-        #model = "llama-3.1:70B"
-        #model = "mistral-small:24B"
-        model = CALL_MODE
-        response = await send_to_together_ai(prompts, model, level_1_llm_tools)
+        from gibbon.llm_ops.together_call import models
+        model_name = self.call_mode
+        if model_name not in models:
+            raise Exception(f"invalid model_name {model_name}, not int {list(models.keys())}")
+        logger.info("Calling together AI model %s", model_name)
+        response = await send_to_together_ai(prompts, model_name, level_1_llm_tools)
         result = None
         if not hasattr(response, 'choices'):
             logger.warning("Reponse from llm not workable, no choices")
@@ -312,7 +318,12 @@ class AimToolbox:
                         
         logger.info("returning %s",result)
         return result
-        
+
+    async def match_call(self, transcript):
+        if self.call_mode == "ollama":
+            return await self.ollama_match_call(transcript)
+        else:
+            return await self.tai_match_call(transcript)
         
 class DraftContex:
 
@@ -329,6 +340,18 @@ class DraftMatcher:
         self.draft_context = None
         self.past_drafts = []
 
+    @property
+    def current_draft(self):
+        if self.draft_context:
+            return self.draft_context.draft
+        return None
+    
+    @property
+    def text_events(self):
+        if self.draft_context:
+            return self.draft_context.text_events
+        return None
+    
     def new_draft(self, draft:Draft):
         if self.draft_context and self.draft_context.draft != draft:
             self.finish_draft_context()
@@ -360,10 +383,7 @@ class DraftMatcher:
                 match_res.excerpt_pos = pos
                 pos += len(match_res.key_phrase)
 
-        if CALL_MODE == "ollama":
-            match_res = await self.toolbox.ollama_match_call(transcript[pos:])
-        else:
-            match_res = await self.toolbox.tai_match_call(transcript[pos:])
+        match_res = await self.toolbox.match_call(transcript[pos:])
         if not match_res:
             return None
         self.draft_context.matches.append(match_res)

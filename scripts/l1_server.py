@@ -9,7 +9,7 @@ from palaver_shared.top_error import TopErrorHandler, TopLevelCallback
 from palaver_shared.text_events import TextEvent
 from palaver_shared.draft_events import DraftEvent, DraftStartEvent, DraftEndEvent, Draft
 from palaver_shared.audio_events import AudioEvent, AudioChunkEvent
-from aim_select import AimToolbox, ClaudeCodeTool, MetaAimTool
+from aim_select import AimToolbox, ClaudeCodeTool, MetaAimTool, DraftMatcher
 from kboard_tool import KBoardTool
 
 from loggers import setup_logging
@@ -27,67 +27,49 @@ class Listener(PalaverEventListener):
         super().__init__()
         self.palaver_url = palaver_url
         self.rest_client = None
-        self.current_draft = None
-        self.matched_level = None
-        self.in_draft_text_events = []
         self.done_drafts = []
         self.last_speech_time = None
         self.last_try_time = None
         self.toolbox = toolbox
+        self.draft_matcher = DraftMatcher(self.toolbox)
         
     async def on_draft_event(self, event:DraftEvent):
         if isinstance(event, DraftStartEvent):
-            if self.current_draft:
+            if self.draft_matcher.current_draft:
                 logger.error("out of order arrival of new draft, didn't get end of last one")
-            self.current_draft = event.draft
+            self.draft_matcher.new_draft(event.draft)
         if isinstance(event, DraftEndEvent):
-            # If we never tried to match this draft, do it now before ending
-            if not self.matched_level and len(self.in_draft_text_events) > 0:
-                logger.info('Draft ended without match attempt, trying match on %s', self.in_draft_text_events)
-                await self.try_match()
-            self.done_drafts.append(dict(draft=event.draft, matched_levels=[self.matched_level,]))
-            self.current_draft = None
-            self.in_draft_text_events = []
-            self.matched_level = None
+            await self.try_match()
             self.last_speech_time = None
             self.last_try_time = None
 
     async def on_text_event(self, event: TextEvent):
-        if not self.current_draft:
-            logger.debug(event)
-            return
-        self.in_draft_text_events.append(event)
+        self.draft_matcher.new_text_event(event)
+        logger.info(event)
 
     async def try_match(self):
-        logger.info('Trying match on %s', self.in_draft_text_events)
-        self.matched_level  = await self.toolbox.try_match(self.current_draft, self.in_draft_text_events)
+        logger.info('Trying match on %s', self.draft_matcher.text_events)
+        match_res = await self.draft_matcher.try_match()
         self.last_try_time = time.time()
-        if self.matched_level:
-            if self.matched_level.confidence > 0.70:
-                try:
-                    logger.info("matched %s", self.matched_level.intent_key)
-                    await self.report_match()
-                except Exception as e:
-                    breakpoint()
-                    print(e)
+        if not match_res:
+            logger.info("no match on try_match call")
+            return None
+        logger.info("matched %s", match_res.intent_key)
+        if self.rest_client is None:
+            logger.info("making connection to %s", self.palaver_url)
+            self.rest_client = PalaverRestClient("http://localhost:8000")
+            await self.rest_client.connect()
+        for_speech = f"Good match! key was, {" ".join(match_res.intent_key.split('_'))}"
+        logger.info("Sending speech text %s to palaver", for_speech)
+        await self.rest_client.text_to_speech(for_speech)
 
-    async def report_match(self):
-        if self.matched_level:
-            if self.rest_client is None:
-                logger.info("making connection to %s", self.palaver_url)
-                self.rest_client = PalaverRestClient("http://localhost:8000")
-                await self.rest_client.connect()
-            for_speech = f"Good match! key was, {" ".join(self.matched_level.intent_key.split('_'))}"
-            logger.info("Sending speech text %s to palaver", for_speech)
-            await self.rest_client.text_to_speech(for_speech)
-        
     async def on_audio_event(self, event: AudioEvent):
         if isinstance(event, AudioChunkEvent):
             if event.in_speech:
                 self.last_speech_time = event.timestamp
                 
-        if self.current_draft and len(self.in_draft_text_events) > 0:
-            if self.last_speech_time and time.time() - self.last_speech_time >= 2.0 and not self.matched_level:
+        if self.draft_matcher.current_draft and len(self.draft_matcher.text_events) > 0:
+            if self.last_speech_time and time.time() - self.last_speech_time >= 2.0:
                 if not self.last_try_time or self.last_speech_time > self.last_try_time:
                     await self.try_match()
 
