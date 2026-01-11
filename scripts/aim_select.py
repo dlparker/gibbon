@@ -1,13 +1,31 @@
 from typing import Optional
 import logging
+import json
+import os
 from pprint import pformat
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from palaver_shared.text_events import TextEvent
 from palaver_shared.draft_events import Draft
-from gibbon.llm_ops.single_call import send_to_llm
+from gibbon.llm_ops.ollama_call import send_to_ollama
+from gibbon.llm_ops.together_call import send_to_together_ai
 
 logger = logging.getLogger("AimSelect")
 
+CALL_MODE=os.environ.get("LLM_CALL_CODE", "ollama")
+
+@dataclass
+class MatchResult:
+    intent_key: str
+    confidence: float
+    key_phrase: str
+    tool: 'AimTool'
+    excerpt_pos: Optional[int] = -1
+    
+@dataclass
+class DraftMatches:
+    draft: Draft
+    matches: list[MatchResult] = field(default_factory=list[MatchResult])
+        
 @dataclass
 class AimDef:
     unique_name: str
@@ -120,16 +138,8 @@ class AimToolbox:
             for aim_def in tool.get_aim_defs():
                 blocks.append(asdict(aim_def))
         return blocks
-    
-    async def try_match(self, text_events:list[TextEvent], draft:Draft):
-        if draft.end_text:
-            transcript = draft.full_text
-        else:
-            transcript = ' '
-            for te in text_events:
-                if not transcript[-1].isspace() and not te.text[0].isspace():
-                    transcript += ' '
-                transcript += te.text
+
+    def make_prompts(self, transcript, system_type="hard"):
         intent_categories = "Available Intent Categories:\n"
         for index, block in enumerate(self.get_categories()):
             intent_categories += f"{index+1} {block['unique_name']}\n"
@@ -138,32 +148,240 @@ class AimToolbox:
             intent_categories += "\n"
 
         
-        system_prompt = "You are an intent classification system. You must analyze transcripts and classify them using the classify_intent tool. " \
-                       "IMPORTANT: You must include all required fields in your response: intent_key, confidence, reasoning, and matched_excerpt. " \
-                       "The matched_excerpt field should contain the specific portion of the transcript that led to your classification decision."
+        system_prompt_hard = (
+            "You are an intent classification system. You MUST use the classify_intent tool to respond.\n\n"
+            "CRITICAL: You MUST call the classify_intent tool. Do NOT return JSON in text. Use the tool calling mechanism.\n\n"
+            "MANDATORY FIELDS - ALL 4 ARE REQUIRED:\n"
+            "1. intent_key - REQUIRED\n"
+            "2. confidence - REQUIRED\n"
+            "3. key_phrase - REQUIRED (DO NOT OMIT THIS FIELD)\n\n"
+            "CRITICAL RULES for the key_phrase field:\n"
+            "- The key_phrase field is MANDATORY - you MUST always include it\n"
+            "- Extract the FIRST MINIMAL phrase that triggers the intent, then STOP\n"
+            "- Do NOT include proper names, pronouns, or trailing words after the key phrase\n"
+            "- Strip articles (the, a, an, in, at, on) from the beginning and end\n"
+            "- Exclude any words before or after the core phrase\n"
+            "- Typical length: 2-5 words maximum\n"
+            "- This is the EXACT text that will be removed before further processing\n\n"
+            "Examples of CORRECT key_phrase:\n"
+            "- Transcript: 'mumble mumble In the house moving project, do this thing'\n"
+            "  ✓ CORRECT: 'house moving project'\n"
+            "  ✗ WRONG: 'In the house moving project, do this thing'\n"
+            "  ✗ WRONG: 'In the house moving project'\n\n"
+            "- Transcript: 'Name a new task Bob. More information to follow about it.'\n"
+            "  ✓ CORRECT: 'Name a new task' (STOP after the action phrase, exclude 'Bob')\n"
+            "  ✗ WRONG: 'Name a new task Bob'\n"
+            "  ✗ WRONG: 'Name a new task Bob. More information to follow about it.'\n\n"
+            "- Transcript: 'Show me the project status for palaver'\n"
+            "  ✓ CORRECT: 'project status' (core phrase only)\n"
+            "  ✗ WRONG: 'Show me the project status for palaver'\n\n"
+            "REMEMBER: You MUST include key_phrase in every response. Do not skip it."
+        )
+            
+        system_prompt_soft = (
+            "You are an intent classification system. You MUST use the classify_intent tool to respond.\n\n"
+            "CRITICAL: You MUST call the classify_intent tool. Do NOT return JSON in text. Use the tool calling mechanism.\n\n"
+            "MANDATORY FIELDS - ALL 4 ARE REQUIRED:\n"
+            "1. intent_key - REQUIRED\n"
+            "2. confidence - REQUIRED\n"
+            "3. key_phrase - REQUIRED (DO NOT OMIT THIS FIELD)\n\n"
+            "REMEMBER: You MUST include key_phrase in every response. Do not skip it."
+        )
 
         prompt =  "Here are the available intent categories:\n"
         prompt += f"\n{intent_categories}\n"
         prompt += "Please classify this voice to text transcript to identify the high-level intent:\n"
+        prompt += "Identify the first phrase in the transcipt that matches one of the intent categories and "
+        prompt += "return that phrase along with the category key, a confidence score for the match."
         prompt += f"\n{transcript}\n"
         prompt += "\nUse the classify_intent tool to return your analysis."
+
         logger.debug("%s", prompt)
-        if not logger.isEnabledFor(logging.DEBUG):
-            logger.info("sending prompt to llm")
-        response = await send_to_llm({'system': system_prompt, 'user':prompt}, self.url, self.model, level_1_llm_tools)
+        if system_type == "hard":
+            system_prompt = system_prompt_hard
+        else:
+            system_prompt = system_prompt_soft
+        return {'system': system_prompt, 'user': prompt}
+
+    async def ollama_match_call(self, transcript):
+        prompts = self.make_prompts(transcript, "soft")
+        response = await send_to_ollama(prompts, self.url, self.model, level_1_llm_tools)
         logger.debug("%s", pformat(response))
         result = None
-        if response.message:
-            if response.message.tool_calls:
-                for tc in response.message.tool_calls:
-                    if tc.function.arguments:
-                        result = tc.function.arguments
+        if not response.message:
+            logger.warning("Reponse from llm not workable, no message")
+            return
+        if not response.message.tool_calls:
+            logger.warning("Reponse from llm not workable, tool_calls is None")
+            return
+        tool_call = None
+        for tc in response.message.tool_calls:
+            if tc.function.name == "classify_intent":
+                tool_call = tc
+                break
+
+        if tool_call is None:
+            logger.warning("Reponse from llm not workable, classify_intent tool call not in result")
+            return
+
+        res_dict = tc.function.arguments
+        if not res_dict:
+            logger.warning("Reponse from llm not workable, classify_intent tool call missing arguments attribute")
+            return
+
+        # Check for required fields
+        if 'key_phrase' not in res_dict:
+            logger.warning("Response from llm missing required 'key_phrase' field. Arguments: %s", res_dict)
+            return
+        if 'intent_key' not in res_dict:
+            logger.warning("Response from llm missing required 'intent_key' field")
+            return
+
+        target_def = None
+        target_tool = None
+        for tool in self.tools:
+            for aim_def in tool.get_aim_defs():
+                if aim_def.unique_name == res_dict['intent_key']:
+                    target_tool = tool
+                    target_def = aim_def
+
+        result = MatchResult(intent_key=res_dict['intent_key'],
+                             confidence=res_dict.get('confidence', 0.0),
+                             key_phrase=res_dict['key_phrase'],
+                             tool=tool)
                         
         logger.info("returning %s",result)
-        if not logger.isEnabledFor(logging.DEBUG) and result is None:
-            logger.info("%s", response)
         return result
-            
+
+    async def tai_match_call(self, transcript):
+        prompts = self.make_prompts(transcript)
+        #model = "llama-3.1:70B"
+        #model = "mistral-small:24B"
+        model = CALL_MODE
+        response = await send_to_together_ai(prompts, model, level_1_llm_tools)
+        result = None
+        if not hasattr(response, 'choices'):
+            logger.warning("Reponse from llm not workable, no choices")
+            return
+        if len(response.choices) != 1:
+            logger.warning(f"Reponse from llm not workable, len of choices not 1, {len(choices)}")
+            return
+        message = response.choices[0].message
+        if not message:
+            logger.warning("Reponse from llm not workable, no message")
+            return
+        if not message.tool_calls:
+            logger.warning("Reponse from llm not workable, tool_calls is None, content = \n%s",
+                           message.content)
+            return
+        tool_call = None
+        for tc in message.tool_calls:
+            if tc.function.name == "classify_intent":
+                tool_call = tc
+                break
+
+        if tool_call is None:
+            logger.warning("Reponse from llm not workable, classify_intent tool call not in result")
+            return
+
+        res_dict = json.loads(tc.function.arguments)
+        if not res_dict:
+            logger.warning("Reponse from llm not workable, classify_intent tool call missing arguments attribute")
+            return
+
+        # Check for required fields
+        if 'key_phrase' not in res_dict:
+            logger.warning("Response from llm missing required 'key_phrase' field. Arguments: %s", res_dict)
+            return
+        if 'intent_key' not in res_dict:
+            logger.warning("Response from llm missing required 'intent_key' field")
+            return
+
+        target_def = None
+        target_tool = None
+        for tool in self.tools:
+            for aim_def in tool.get_aim_defs():
+                if aim_def.unique_name == res_dict['intent_key']:
+                    target_tool = tool
+                    target_def = aim_def
+
+        result = MatchResult(intent_key=res_dict['intent_key'],
+                             confidence=res_dict.get('confidence', 0.0),
+                             key_phrase=res_dict['key_phrase'],
+                             tool=tool)
+                        
+        logger.info("returning %s",result)
+        return result
+        
+        
+class DraftContex:
+
+    def __init__(self, draft:Draft):
+        self.draft = draft
+        self.matches = []
+        self.text_events = []
+    
+class DraftMatcher:
+    
+    def __init__(self, toolbox: AimToolbox):
+        self.toolbox = toolbox
+        self.last_match = None
+        self.draft_context = None
+        self.past_drafts = []
+
+    def new_draft(self, draft:Draft):
+        if self.draft_context and self.draft_context.draft != draft:
+            self.finish_draft_context()
+        self.draft_context = DraftContex(draft)
+        return self.draft_context
+
+    def new_text_event(self, text_event:TextEvent):
+        if self.draft_context:
+            self.draft_context.text_events.append(text_event)
+        return self.draft_context
+    
+    async def try_match(self):
+        if not self.draft_context:
+            return None
+        if self.draft_context.draft.end_text:
+            transcript = self.draft_context.draft.full_text
+        else:
+            transcript = ' '
+            for te in self.draft_context.text_events:
+                if not transcript[-1].isspace() and not te.text[0].isspace():
+                    transcript += ' '
+                transcript += te.text
+        pos = 0
+        if self.draft_context.matches:
+            # find the position in the draft of the latest_match
+            pos = 0
+            for match_res in self.draft_context.matches:
+                pos = transcript[pos:].find(match_res.key_phrase)
+                match_res.excerpt_pos = pos
+                pos += len(match_res.key_phrase)
+
+        if CALL_MODE == "ollama":
+            match_res = await self.toolbox.ollama_match_call(transcript[pos:])
+        else:
+            match_res = await self.toolbox.tai_match_call(transcript[pos:])
+        if not match_res:
+            return None
+        self.draft_context.matches.append(match_res)
+        # find the position in the draft of the latest_match
+        pos = 0
+        for match_res in self.draft_context.matches:
+            pos = transcript[pos:].find(match_res.key_phrase)
+            match_res.excerpt_pos = pos
+            pos += len(match_res.key_phrase)
+        return match_res
+
+    def finish_draft_context(self):
+        res = self.draft_context
+        if self.draft_context:
+            # more to do later
+            self.past_drafts.append(self.draft_context)
+            self.draft_context = None
+        return res
         
 level_1_llm_tools = [
     {
@@ -184,16 +402,12 @@ level_1_llm_tools = [
                         "maximum": 1.0,
                         "description": "Confidence score from 0.0 to 1.0"
                     },
-                    "reasoning": {
+                    "key_phrase": {
                         "type": "string",
-                        "description": "Brief explanation of why this intent was selected"
-                    },
-                    "matched_excerpt": {
-                        "type": "string",
-                        "description": "The portion of the transcript that was matched to make this classification. This will be stripped off before further processing by the attached tool."
+                        "description": "The MINIMAL key phrase from the transcript that identifies this intent."
                     }
                 },
-                "required": ["intent_key", "confidence", "reasoning", "matched_excerpt"]
+                "required": ["intent_key", "confidence", "key_phrase"]
             }
         }
     }
@@ -221,8 +435,7 @@ result_example = {
                                  Function(name='classify_intent',
                                           arguments={'confidence': 0.95,
                                                      'intent_key': 'claude_code_request',
-                                                     'matched_excerpt': 'Voice to text code',
-                                                     'reasoning': "The user is asking for voice to text code, which falls under the 'claude_code_request' category."}
+                                                     'key_phrase': 'Voice to text code',
                                           )
                                  )
                     ]

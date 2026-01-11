@@ -21,7 +21,6 @@ MODEL = "mistral:7b-instruct"
 
 logger = logging.getLogger('L1Server')
 
-   
 class Listener(PalaverEventListener):
 
     def __init__(self, palaver_url: str, toolbox: AimToolbox):
@@ -35,7 +34,6 @@ class Listener(PalaverEventListener):
         self.last_speech_time = None
         self.last_try_time = None
         self.toolbox = toolbox
-        
         
     async def on_draft_event(self, event:DraftEvent):
         if isinstance(event, DraftStartEvent):
@@ -62,12 +60,12 @@ class Listener(PalaverEventListener):
 
     async def try_match(self):
         logger.info('Trying match on %s', self.in_draft_text_events)
-        self.matched_level  = await self.toolbox.try_match(self.in_draft_text_events, self.current_draft)
+        self.matched_level  = await self.toolbox.try_match(self.current_draft, self.in_draft_text_events)
         self.last_try_time = time.time()
         if self.matched_level:
-            if self.matched_level['confidence'] > 0.70:
+            if self.matched_level.confidence > 0.70:
                 try:
-                    logger.info("matched %s", self.matched_level['intent_key'])
+                    logger.info("matched %s", self.matched_level.intent_key)
                     await self.report_match()
                 except Exception as e:
                     breakpoint()
@@ -79,7 +77,7 @@ class Listener(PalaverEventListener):
                 logger.info("making connection to %s", self.palaver_url)
                 self.rest_client = PalaverRestClient("http://localhost:8000")
                 await self.rest_client.connect()
-            for_speech = f"Good matched! key was, {" ".join(self.matched_level['intent_key'].split('_'))}"
+            for_speech = f"Good match! key was, {" ".join(self.matched_level.intent_key.split('_'))}"
             logger.info("Sending speech text %s to palaver", for_speech)
             await self.rest_client.text_to_speech(for_speech)
         

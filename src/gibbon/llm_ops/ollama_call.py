@@ -2,11 +2,11 @@ import asyncio
 import logging
 from typing import Optional
 
-logger = logging.getLogger("LLMSingleCall")
+logger = logging.getLogger("OllamaCall")
 
 from ollama import AsyncClient
 
-async def send_to_llm(prompts:dict,  ollama_url: str, model: str, tools:Optional[list[dict]]=None) -> dict:
+async def send_to_ollama(prompts:dict,  ollama_url: str, model: str, tools:Optional[list[dict]]=None) -> dict:
     client = AsyncClient(host=ollama_url)
 
     # Handle both dict (new) and string (old) formats for backwards compatibility
