@@ -60,6 +60,7 @@ def get_loggers():
     res  = []
     res.append(logging.getLogger("AimSelect"))
     res.append(logging.getLogger("LLMSingleCall"))
+    res.append(logging.getLogger("TogetherAPI"))
 
     return res
 

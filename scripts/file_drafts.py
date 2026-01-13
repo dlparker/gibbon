@@ -6,8 +6,9 @@ import fire
 
 from palaver_shared.draft_events import Draft, DraftStartEvent, DraftEndEvent
 from palaver_shared.text_events import TextEvent
-from aim_select import AimToolbox, ClaudeCodeTool, MetaAimTool, DraftMatcher
+from aim_select import AimToolbox, ClaudeCodeTool, MetaAimTool
 from kboard_tool import KBoardTool
+from draft_tools import DraftMatcher
 
 from loggers import setup_logging
 OLLAMA_URL = "http://192.168.100.242:11434"
@@ -122,19 +123,13 @@ class FileDraftRunner:
 
         await self.draft_matcher.try_match()
         ctxt = self.draft_matcher.draft_context
-        assert len(ctxt.matches) == 1
-        top_match = ctxt.matches[0]
-        pprint(top_match)
-        await self.draft_matcher.try_match()
-        ctxt = self.draft_matcher.draft_context
-        assert len(ctxt.matches) == 2
-        top_match = ctxt.matches[1]
-        pprint(top_match)
+        for match_res in ctxt.matches:
+            pprint(match_res)
         
         
         
 if __name__ == "__main__":
     setup_logging(more_loggers=[],
-                  info_loggers=[],
+                  info_loggers=['TogetherAPI'],
                   debug_loggers=["AimSelect",])
     fire.Fire(FileDraftRunner())

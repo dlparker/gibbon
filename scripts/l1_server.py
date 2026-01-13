@@ -10,7 +10,8 @@ from palaver_shared.top_error import TopErrorHandler, TopLevelCallback, get_erro
 from palaver_shared.text_events import TextEvent
 from palaver_shared.draft_events import DraftEvent, DraftStartEvent, DraftEndEvent, Draft
 from palaver_shared.audio_events import AudioEvent, AudioChunkEvent
-from aim_select import AimToolbox, ClaudeCodeTool, MetaAimTool, DraftMatcher
+from aim_select import AimToolbox, ClaudeCodeTool, MetaAimTool
+from draft_tools import DraftMatcher
 from kboard_tool import KBoardTool
 
 from loggers import setup_logging
@@ -26,12 +27,14 @@ logger = logging.getLogger('L1Server')
 
 class Listener(PalaverEventListener):
 
-    def __init__(self, palaver_url: str, toolbox: AimToolbox):
+    def __init__(self, palaver_url: str, toolbox: AimToolbox, voice_feedback=False, do_signals=False):
         super().__init__(event_types="no_audio")
         self.palaver_url = palaver_url
+        self.toolbox = toolbox
+        self.voice_feedback = voice_feedback
+        self.do_signals = do_signals
         self.rest_client = None
         self.done_drafts = []
-        self.toolbox = toolbox
         self.draft_matcher = DraftMatcher(self.toolbox)
         
     async def on_draft_event(self, event:DraftEvent):
@@ -40,6 +43,7 @@ class Listener(PalaverEventListener):
                 logger.error("out of order arrival of new draft, didn't get end of last one")
             self.draft_matcher.new_draft(event.draft)
         if isinstance(event, DraftEndEvent):
+            await self.try_match()
             if self.draft_matcher.current_draft:
                 logger.info("finishing draft")
                 ctxt = self.draft_matcher.finish_draft_context()
@@ -50,30 +54,32 @@ class Listener(PalaverEventListener):
         self.draft_matcher.new_text_event(event)
         logger.info(event)
         async def check_try(event):
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
             await self.try_match()
         get_error_handler().wrap_task(lambda event=event: check_try(event))
 
     async def try_match(self):
-        logger.info('Trying match on %s', self.draft_matcher.text_events)
-        if self.rest_client is None:
-            logger.info("making connection to %s", self.palaver_url)
-            self.rest_client = PalaverRestClient("http://localhost:8000")
-            await self.rest_client.connect()
         if self.draft_matcher.draft_context and self.draft_matcher.draft_context.try_needed():
-            await self.rest_client.play_signal_sound('working')
+            logger.info('Trying match on %s', self.draft_matcher)
+            if self.do_signals:
+                if self.rest_client is None:
+                    logger.info("making connection to %s", self.palaver_url)
+                    self.rest_client = PalaverRestClient("http://localhost:8000")
+                    await self.rest_client.connect()
+                await self.rest_client.play_signal_sound('working')
             match_res = await self.draft_matcher.try_match()
             if not match_res or "unknown" in match_res.intent_key:
                 logger.info("no match on try_match call")
-                for_speech = f"No match found for draft "
-                logger.info("Sending speech text %s to palaver", for_speech)
-                await self.rest_client.text_to_speech(for_speech)
+                if self.voice_feedback:
+                    for_speech = f"No match found for draft "
+                    logger.info("Sending speech text %s to palaver", for_speech)
+                    await self.rest_client.text_to_speech(for_speech)
                 return None
             logger.info("matched %s", match_res.intent_key)
-            for_speech = f"Good match! key was, {" ".join(match_res.intent_key.split('_'))}"
-            logger.info("Sending speech text %s to palaver", for_speech)
-            await self.rest_client.text_to_speech(for_speech)
-
+            if self.voice_feedback:
+                for_speech = f"Good match! key was, {" ".join(match_res.intent_key.split('_'))}"
+                logger.info("Sending speech text %s to palaver", for_speech)
+                await self.rest_client.text_to_speech(for_speech)
 
 async def main_loop():
 

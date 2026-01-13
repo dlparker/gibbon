@@ -20,24 +20,7 @@ class MatchResult:
     tool: 'AimTool'
     excerpt_pos: Optional[int] = -1
     
-@dataclass
-class DraftMatches:
-    draft: Draft
-    matches: list[MatchResult] = field(default_factory=list[MatchResult])
         
-class DraftContex:
-
-    def __init__(self, draft:Draft):
-        self.draft = draft
-        self.matches = []
-        self.text_events = []
-        self.last_check_text_index = -1
-
-    def try_needed(self):
-        if len(self.matches) == 0 and self.last_check_text_index < len(self.text_events) -1 :
-            return True
-        return False
-    
 @dataclass
 class AimDef:
     unique_name: str
@@ -156,28 +139,30 @@ class AimToolbox:
         return blocks
 
     def make_prompts(self, transcript, system_type="hard"):
-        intent_categories = "Available Intent Categories:\n"
+        intent_categories = "Intent Categories List:\n"
         for index, block in enumerate(self.get_categories()):
-            intent_categories += f"{index+1} {block['unique_name']}\n"
-            intent_categories += f"  {block['description']}\n"
-            intent_categories += f"  {block['examples']}\n"
+            intent_categories += f"{index+1}. intent_key: {block['unique_name']}\n"
+            intent_categories += f"   description: {block['description']}\n"
+            intent_categories += f"   examples: {block['examples']}\n"
             intent_categories += "\n"
 
-        
+            
         system_prompt_hard = (
             "You are an intent classification system. You MUST use the classify_intent tool to respond.\n\n"
             "CRITICAL: You MUST call the classify_intent tool. Do NOT return JSON in text. Use the tool calling mechanism.\n\n"
             "MANDATORY FIELDS - ALL 4 ARE REQUIRED:\n"
             "1. intent_key - REQUIRED\n"
             "2. confidence - REQUIRED\n"
-            "3. key_phrase - REQUIRED (DO NOT OMIT THIS FIELD)\n\n"
+            "3. key_phrase - REQUIRED\n\n"
             "CRITICAL RULES for the key_phrase field:\n"
-            "- The key_phrase field is MANDATORY - you MUST always include it\n"
-            "- Extract the FIRST MINIMAL phrase that triggers the intent, then STOP\n"
+            "- The key_phrase field is MANDATORY - you MUST always include it, even if it is None\n"
+            "- Extract the FIRST MINIMAL phrase from the transcript that triggers the intent, then STOP\n"
+            "- This key_phrase is an extract from the transcript, a direct quote,\n"
             "- Do NOT include proper names, pronouns, or trailing words after the key phrase\n"
+            "- Do NOT use the intent description for the key phrase, use the actual words in the transcript.\n"
             "- Strip articles (the, a, an, in, at, on) from the beginning and end\n"
             "- Exclude any words before or after the core phrase\n"
-            "- Typical length: 2-5 words maximum\n"
+            "- Typical length: 2-8 words maximum\n"
             "- This is the EXACT text that will be removed before further processing\n\n"
             "Examples of CORRECT key_phrase:\n"
             "- Transcript: 'mumble mumble In the house moving project, do this thing'\n"
@@ -191,32 +176,62 @@ class AimToolbox:
             "- Transcript: 'Show me the project status for palaver'\n"
             "  ✓ CORRECT: 'project status' (core phrase only)\n"
             "  ✗ WRONG: 'Show me the project status for palaver'\n\n"
-            "REMEMBER: You MUST include key_phrase in every response. Do not skip it."
+            "REMEMBER: You MUST include key_phrase in every response. Do not skip it.\n"
+            "Example of result when no match found:\n"
+            "1. intent_key - None\n"
+            "2. confidence - 0.0\n"
+            "3. key_phrase - None\n\n"
+            
         )
             
         system_prompt_soft = (
-            "You are an intent classification system. You MUST use the classify_intent tool to respond.\n\n"
+            "You are an intent classification system. You detecting whether the transcript has any\n"
+            "phrases that match one of of the intent descriptions. No match is a possible correct asnwer.\n"
+            "You MUST use the classify_intent tool to respond.\n\n"
             "CRITICAL: You MUST call the classify_intent tool. Do NOT return JSON in text. Use the tool calling mechanism.\n\n"
-            "MANDATORY FIELDS - ALL 4 ARE REQUIRED:\n"
             "1. intent_key - REQUIRED\n"
             "2. confidence - REQUIRED\n"
             "3. key_phrase - REQUIRED (DO NOT OMIT THIS FIELD)\n\n"
-            "REMEMBER: You MUST include key_phrase in every response. Do not skip it."
+            "REMEMBER: the key_phrase must be a direct quote from the transcript\n"
+            "Example of a valid result when no match found:\n"
+            "1. intent_key - None\n"
+            "2. confidence - 0.0\n"
+            "3. key_phrase - None\n\n"
         )
-
-        prompt =  "Here are the available intent categories:\n"
-        prompt += f"\n{intent_categories}\n"
-        prompt += "Please classify this voice to text transcript to identify the high-level intent:\n"
-        prompt += "Identify the first phrase in the transcipt that matches one of the intent categories and "
-        prompt += "return that phrase along with the category key, a confidence score for the match."
+        prompt  = "Search this transcript for key phrases indicating the speaker's intent\n"
+        prompt += "\n"
+        prompt += "------ TRANSCRIPT BEGINS -------"
         prompt += f"\n{transcript}\n"
+        prompt += "------ TRANSCRIPT ENDS -------"
+        prompt += "\n"
+        prompt +=  "This is the list of intent categories that can be matched by the transcript\n"
+        prompt += "\n"
+        prompt += f"\n{intent_categories}\n"
+        prompt += "\n"
+        prompt += "Your task is to **detect** whether this transcript contains language that expresses one of the available intents categries.\n"
+        prompt += "\n"
+        prompt += "1. Examine the descriptions in the intent category list.\n"
+        prompt += "2. Search the transcript to see if any phrase strongly correlates with any description.\n"
+        prompt += "3. Use the examples in the intent category list to help you understand the intent.\n"
+        prompt += "4. Do not use the examples in the intent category list in key_phrase reporting, only\n"
+        prompt += "   use transcript words and phrases.\n"
+        prompt += "\n"
+        prompt += "Only report a match if you see a transcript phrase that reasonably belongs to one of the categories. \n"
+        prompt += "If there is no good match that is a valid result.\n"
+        prompt += "\n"
+        prompt += "Return:\n"
+        prompt += "• the first reasonably matching phrase, it must be an exact quote from the transcript\n"
+        prompt += "• the corresponding intent category key\n"
+        prompt += "• a realistic confidence score\n"
+        prompt += "\n"
         prompt += "\nUse the classify_intent tool to return your analysis."
 
-        logger.debug("%s", prompt)
         if system_type == "hard":
             system_prompt = system_prompt_hard
         else:
             system_prompt = system_prompt_soft
+        logger.debug("System Prompt:\n%s\n", system_prompt)
+        logger.debug("User Prompt:\n%s\n", prompt)
         return {'system': system_prompt, 'user': prompt}
 
     async def ollama_match_call(self, transcript):
@@ -337,79 +352,6 @@ class AimToolbox:
             return await self.ollama_match_call(transcript)
         else:
             return await self.tai_match_call(transcript)
-        
-class DraftMatcher:
-    
-    def __init__(self, toolbox: AimToolbox):
-        self.toolbox = toolbox
-        self.last_match = None
-        self.draft_context = None
-        self.past_drafts = []
-
-    @property
-    def current_draft(self):
-        if self.draft_context:
-            return self.draft_context.draft
-        return None
-    
-    @property
-    def text_events(self):
-        if self.draft_context:
-            return self.draft_context.text_events
-        return None
-    
-    def new_draft(self, draft:Draft):
-        if self.draft_context and self.draft_context.draft != draft:
-            self.finish_draft_context()
-        self.draft_context = DraftContex(draft)
-        return self.draft_context
-
-    def new_text_event(self, text_event:TextEvent):
-        if self.draft_context:
-            self.draft_context.text_events.append(text_event)
-        return self.draft_context
-    
-    async def try_match(self):
-        if not self.draft_context:
-            return None
-        if self.draft_context.draft.end_text:
-            transcript = self.draft_context.draft.full_text
-        else:
-            transcript = ' '
-            for te in self.draft_context.text_events:
-                if not transcript[-1].isspace() and not te.text[0].isspace():
-                    transcript += ' '
-                transcript += te.text
-        pos = 0
-        if self.draft_context.matches:
-            # find the position in the draft of the latest_match
-            pos = 0
-            for match_res in self.draft_context.matches:
-                pos = transcript[pos:].find(match_res.key_phrase)
-                match_res.excerpt_pos = pos
-                pos += len(match_res.key_phrase)
-
-        ctxt = self.draft_context
-        ctxt.last_check_text_index = len(ctxt.text_events) - 1 
-        match_res = await self.toolbox.match_call(transcript[pos:])
-        if not match_res:
-            return None
-        self.draft_context.matches.append(match_res)
-        # find the position in the draft of the latest_match
-        pos = 0
-        for match_res in self.draft_context.matches:
-            pos = transcript[pos:].find(match_res.key_phrase)
-            match_res.excerpt_pos = pos
-            pos += len(match_res.key_phrase)
-        return match_res
-
-    def finish_draft_context(self):
-        res = self.draft_context
-        if self.draft_context:
-            # more to do later
-            self.past_drafts.append(self.draft_context)
-            self.draft_context = None
-        return res
         
 level_1_llm_tools = [
     {
