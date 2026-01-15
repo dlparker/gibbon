@@ -26,6 +26,9 @@ class DraftContex:
 
     def try_needed(self):
         if self.last_check_text_index < len(self.text_events) -1:
+            tmp = self.text[self.search_pos:]
+            if len(tmp.split()) < 3:
+                return False
             return True
         return False
     
@@ -83,11 +86,11 @@ class DraftMatcher:
         # find the position in the text of the latest_match. First find
         # it in the sent trascript so as to avoid matching previously
         # matched text
-        pos = transcript.find(match_res.key_phrase)
+        pos = transcript.find(match_res.matched_phrase)
         # add the offset where we started the transcript
         pos += self.draft_context.search_pos
         match_res.excerpt_pos = pos
-        pos += len(match_res.key_phrase)
+        pos += len(match_res.matched_phrase)
         # update the seach position to pass the matched text
         self.draft_context.search_pos = pos
         return match_res

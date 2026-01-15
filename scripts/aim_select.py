@@ -16,7 +16,7 @@ logger = logging.getLogger("AimSelect")
 class MatchResult:
     intent_key: str
     confidence: float
-    key_phrase: str
+    matched_phrase: str
     tool: 'AimTool'
     excerpt_pos: Optional[int] = -1
     
@@ -153,18 +153,18 @@ class AimToolbox:
             "MANDATORY FIELDS - ALL 4 ARE REQUIRED:\n"
             "1. intent_key - REQUIRED\n"
             "2. confidence - REQUIRED\n"
-            "3. key_phrase - REQUIRED\n\n"
-            "CRITICAL RULES for the key_phrase field:\n"
-            "- The key_phrase field is MANDATORY - you MUST always include it, even if it is None\n"
+            "3. matched_phrase - REQUIRED\n\n"
+            "CRITICAL RULES for the matched_phrase field:\n"
+            "- The matched_phrase field is MANDATORY - you MUST always include it, even if it is None\n"
             "- Extract the FIRST MINIMAL phrase from the transcript that triggers the intent, then STOP\n"
-            "- This key_phrase is an extract from the transcript, a direct quote,\n"
+            "- This matched_phrase is an extract from the transcript, a direct quote,\n"
             "- Do NOT include proper names, pronouns, or trailing words after the key phrase\n"
             "- Do NOT use the intent description for the key phrase, use the actual words in the transcript.\n"
             "- Strip articles (the, a, an, in, at, on) from the beginning and end\n"
             "- Exclude any words before or after the core phrase\n"
             "- Typical length: 2-8 words maximum\n"
             "- This is the EXACT text that will be removed before further processing\n\n"
-            "Examples of CORRECT key_phrase:\n"
+            "Examples of CORRECT matched_phrase:\n"
             "- Transcript: 'mumble mumble In the house moving project, do this thing'\n"
             "  ✓ CORRECT: 'house moving project'\n"
             "  ✗ WRONG: 'In the house moving project, do this thing'\n"
@@ -176,11 +176,11 @@ class AimToolbox:
             "- Transcript: 'Show me the project status for palaver'\n"
             "  ✓ CORRECT: 'project status' (core phrase only)\n"
             "  ✗ WRONG: 'Show me the project status for palaver'\n\n"
-            "REMEMBER: You MUST include key_phrase in every response. Do not skip it.\n"
+            "REMEMBER: You MUST include matched_phrase in every response. Do not skip it.\n"
             "Example of result when no match found:\n"
             "1. intent_key - None\n"
             "2. confidence - 0.0\n"
-            "3. key_phrase - None\n\n"
+            "3. matched_phrase - None\n\n"
             
         )
             
@@ -189,42 +189,40 @@ class AimToolbox:
             "phrases that match one of of the intent descriptions. No match is a possible correct asnwer.\n"
             "You MUST use the classify_intent tool to respond.\n\n"
             "CRITICAL: You MUST call the classify_intent tool. Do NOT return JSON in text. Use the tool calling mechanism.\n\n"
-            "1. intent_key - REQUIRED\n"
-            "2. confidence - REQUIRED\n"
-            "3. key_phrase - REQUIRED (DO NOT OMIT THIS FIELD)\n\n"
-            "REMEMBER: the key_phrase must be a direct quote from the transcript\n"
+            "1. intent_key - identified match from intent categories\n"
+            "2. confidence - score from 0.0 to 10.0\n"
+            "3. matched_phrase - direct quote from transcript of matching identified intent\n\n"
+            "REMEMBER: the matched_phrase must be a direct quote from the transcript\n"
             "Example of a valid result when no match found:\n"
             "1. intent_key - None\n"
             "2. confidence - 0.0\n"
-            "3. key_phrase - None\n\n"
+            "3. matched_phrase - None\n\n"
         )
-        prompt  = "Search this transcript for key phrases indicating the speaker's intent\n"
+        prompt  = "Search this voice to text transcript of for key phrases indicating the speaker's intent\n"
         prompt += "\n"
         prompt += "------ TRANSCRIPT BEGINS -------"
         prompt += f"\n{transcript}\n"
         prompt += "------ TRANSCRIPT ENDS -------"
         prompt += "\n"
-        prompt +=  "This is the list of intent categories that can be matched by the transcript\n"
+        prompt +=  "This is the list of intent categories that can be matched by the transcript:\n"
         prompt += "\n"
         prompt += f"\n{intent_categories}\n"
         prompt += "\n"
-        prompt += "Your task is to **detect** whether this transcript contains language that expresses one of the available intents categries.\n"
+        prompt += "Your task is to whether the speaker clearly used language that expresses one of the available intents categries, or was talking about something else.\n"
         prompt += "\n"
-        prompt += "1. Examine the descriptions in the intent category list.\n"
-        prompt += "2. Search the transcript to see if any phrase strongly correlates with any description.\n"
-        prompt += "3. Use the examples in the intent category list to help you understand the intent.\n"
-        prompt += "4. Do not use the examples in the intent category list in key_phrase reporting, only\n"
-        prompt += "   use transcript words and phrases.\n"
+        prompt += "1. Make a determination if there is a strong match between the first few words of the\n"
+        prompt += "   transcript draft and one of the listed intent categories.\n"
+        prompt += "2. If there was a strong match between one of the intent descriptions and the transcript,\n"
+        prompt += "   then identify the intent_key, the matching phrase in the transcript and a score for how well they match.\n"
+        prompt += "3. if there was no strong match, then set the intent_key to None, the matching phrase to None and the confidence to 0.0\n"
+        prompt += "4. The examples in the intent category list to help you understand the intent, do not treat them as part of the transcript.\n"
         prompt += "\n"
-        prompt += "Only report a match if you see a transcript phrase that reasonably belongs to one of the categories. \n"
-        prompt += "If there is no good match that is a valid result.\n"
-        prompt += "\n"
-        prompt += "Return:\n"
+        prompt += "Return, via the classify_intent tool:\n"
         prompt += "• the first reasonably matching phrase, it must be an exact quote from the transcript\n"
         prompt += "• the corresponding intent category key\n"
         prompt += "• a realistic confidence score\n"
         prompt += "\n"
-        prompt += "\nUse the classify_intent tool to return your analysis."
+        prompt += "\nCRITICAL: Use the classify_intent tool to return your analysis."
 
         if system_type == "hard":
             system_prompt = system_prompt_hard
@@ -262,8 +260,8 @@ class AimToolbox:
             return
 
         # Check for required fields
-        if 'key_phrase' not in res_dict:
-            logger.warning("Response from llm missing required 'key_phrase' field. Arguments: %s", res_dict)
+        if 'matched_phrase' not in res_dict:
+            logger.warning("Response from llm missing required 'matched_phrase' field. Arguments: %s", res_dict)
             return
         if 'intent_key' not in res_dict:
             logger.warning("Response from llm missing required 'intent_key' field")
@@ -279,7 +277,7 @@ class AimToolbox:
 
         result = MatchResult(intent_key=res_dict['intent_key'],
                              confidence=res_dict.get('confidence', 0.0),
-                             key_phrase=res_dict['key_phrase'],
+                             matched_phrase=res_dict['matched_phrase'],
                              tool=tool)
                         
         logger.info("returning %s",result)
@@ -324,8 +322,8 @@ class AimToolbox:
             return
 
         # Check for required fields
-        if 'key_phrase' not in res_dict:
-            logger.warning("Response from llm missing required 'key_phrase' field. Arguments: %s", res_dict)
+        if 'matched_phrase' not in res_dict:
+            logger.warning("Response from llm missing required 'matched_phrase' field. Arguments: %s", res_dict)
             return
         if 'intent_key' not in res_dict:
             logger.warning("Response from llm missing required 'intent_key' field")
@@ -341,7 +339,7 @@ class AimToolbox:
 
         result = MatchResult(intent_key=res_dict['intent_key'],
                              confidence=res_dict.get('confidence', 0.0),
-                             key_phrase=res_dict['key_phrase'],
+                             matched_phrase=res_dict['matched_phrase'],
                              tool=tool)
                         
         logger.info("returning %s",result)
@@ -372,12 +370,12 @@ level_1_llm_tools = [
                         "maximum": 1.0,
                         "description": "Confidence score from 0.0 to 1.0"
                     },
-                    "key_phrase": {
+                    "matched_phrase": {
                         "type": "string",
                         "description": "The MINIMAL key phrase from the transcript that identifies this intent."
                     }
                 },
-                "required": ["intent_key", "confidence", "key_phrase"]
+                "required": ["intent_key", "confidence", "matched_phrase"]
             }
         }
     }
@@ -405,7 +403,7 @@ result_example = {
                                  Function(name='classify_intent',
                                           arguments={'confidence': 0.95,
                                                      'intent_key': 'claude_code_request',
-                                                     'key_phrase': 'Voice to text code',
+                                                     'matched_phrase': 'Voice to text code',
                                           )
                                  )
                     ]
