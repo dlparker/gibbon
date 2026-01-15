@@ -26,6 +26,7 @@ class AimDef:
     unique_name: str
     description: str
     examples: str
+    preferred_words: Optional[list[str]] = None
 
     
 @dataclass
@@ -71,7 +72,8 @@ class ClaudeCodeTool(AimTool):
             AimDef(unique_name = 'claude_code_request',
                    description =  'User wants to do claude code planning - author design documents, run tech research, create development stories.',
                    examples = '"Why is this code needed?", "How can I use this python library", ' \
-                   '"Create story to for code for palaver project", "Create coding tasks based on story 10", "How can I get this property from a GNUCash file"'
+                   '"Create story to for code for palaver project", "Create coding tasks based on story 10", "How can I get this property from a GNUCash file"',
+                   preferred_words = ['draft',]
                    )
             ]
     
@@ -144,6 +146,8 @@ class AimToolbox:
             intent_categories += f"{index+1}. intent_key: {block['unique_name']}\n"
             intent_categories += f"   description: {block['description']}\n"
             intent_categories += f"   examples: {block['examples']}\n"
+            if block['preferred_words']:
+                intent_categories += f"   preferred words: {','.join(block['preferred_words'])}\n"
             intent_categories += "\n"
 
             
@@ -216,6 +220,7 @@ class AimToolbox:
         prompt += "   then identify the intent_key, the matching phrase in the transcript and a score for how well they match.\n"
         prompt += "3. if there was no strong match, then set the intent_key to None, the matching phrase to None and the confidence to 0.0\n"
         prompt += "4. The examples in the intent category list to help you understand the intent, do not treat them as part of the transcript.\n"
+        prompt += "5. If the intent category list item includes 'preferred words', give a low score to potential matches that do not contain one of these words\n"
         prompt += "\n"
         prompt += "Return, via the classify_intent tool:\n"
         prompt += "• the first reasonably matching phrase, it must be an exact quote from the transcript\n"
