@@ -130,6 +130,6 @@ class FileDraftRunner:
         
 if __name__ == "__main__":
     setup_logging(more_loggers=[],
-                  info_loggers=['TogetherAPI'],
-                  debug_loggers=["AimSelect",])
+                  info_loggers=['TogetherAPI', 'AimSelect',],
+                  debug_loggers=[ 'DraftTools', ])
     fire.Fire(FileDraftRunner())

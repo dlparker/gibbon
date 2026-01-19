@@ -67,19 +67,21 @@ class Listener(PalaverEventListener):
                     self.rest_client = PalaverRestClient("http://localhost:8000")
                     await self.rest_client.connect()
                 await self.rest_client.play_signal_sound('working')
-            match_res = await self.draft_matcher.try_match()
-            if not match_res or "unknown" in match_res.intent_key:
+            match_data = await self.draft_matcher.try_match()
+            if not match_data:
                 logger.info("no match on try_match call")
                 if self.voice_feedback:
                     for_speech = f"No match found for draft "
                     logger.info("Sending speech text %s to palaver", for_speech)
                     await self.rest_client.text_to_speech(for_speech)
                 return None
-            logger.info("matched %s", match_res.intent_key)
-            if self.voice_feedback:
-                for_speech = f"Good match! key was, {" ".join(match_res.intent_key.split('_'))}"
-                logger.info("Sending speech text %s to palaver", for_speech)
-                await self.rest_client.text_to_speech(for_speech)
+            for res_item in match_data:
+                match_res = res_item['match_res']
+                logger.info("matched %s", match_res.intent_key)
+                if self.voice_feedback:
+                    for_speech = f"Good match! key was, {" ".join(match_res.intent_key.split('_'))}"
+                    logger.info("Sending speech text %s to palaver", for_speech)
+                    await self.rest_client.text_to_speech(for_speech)
 
 async def main_loop():
 

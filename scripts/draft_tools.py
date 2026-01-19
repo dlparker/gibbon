@@ -11,26 +11,10 @@ from gibbon.llm_ops.ollama_call import send_to_ollama
 from gibbon.llm_ops.together_call import send_to_together_ai
 
 from aim_select import AimToolbox
+from flow_types import DraftContext
 
 logger = logging.getLogger("DraftTools")
     
-class DraftContex:
-
-    def __init__(self, draft:Draft):
-        self.draft = draft
-        self.text = ""
-        self.search_pos = 0
-        self.matches = []
-        self.text_events = []
-        self.last_check_text_index = -1
-
-    def try_needed(self):
-        if self.last_check_text_index < len(self.text_events) -1:
-            tmp = self.text[self.search_pos:]
-            if len(tmp.split()) < 3:
-                return False
-            return True
-        return False
     
 class DraftMatcher:
     
@@ -55,7 +39,7 @@ class DraftMatcher:
     def new_draft(self, draft:Draft):
         if self.draft_context and self.draft_context.draft != draft:
             self.finish_draft_context()
-        self.draft_context = DraftContex(draft)
+        self.draft_context = DraftContext(draft)
         return self.draft_context
 
     def new_text_event(self, text_event:TextEvent):
@@ -67,33 +51,53 @@ class DraftMatcher:
             tbuff += text_event.text
             self.draft_context.text= tbuff
         return self.draft_context
-    
-    async def try_match(self):
-        if not self.draft_context:
-            return None
-        transcript = self.draft_context.text[self.draft_context.search_pos:]
+
+    async def run_matcher(self, start=None, end=None):
+        if start is None:
+            start = self.draft_context.search_pos
+        if end is None:
+            end = len(self.draft_context.text)
+        transcript = self.draft_context.text[start:end]
         tdict = {ord(c): None for c in string.punctuation}
         tmp = transcript.strip().translate(tdict)
         if tmp.strip() == "":
-            return None
-        
+            return None,None
         ctxt = self.draft_context
         ctxt.last_check_text_index = len(ctxt.text_events) - 1 
         match_res = await self.toolbox.match_call(transcript)
         if not match_res:
-            return None
+            return None,None
         self.draft_context.matches.append(match_res)
         # find the position in the text of the latest_match. First find
-        # it in the sent trascript so as to avoid matching previously
+        # it in the sent transcript so as to avoid matching previously
         # matched text
+        if match_res.confidence < 0.5:
+            return None,None
         pos = transcript.find(match_res.matched_phrase)
         # add the offset where we started the transcript
-        pos += self.draft_context.search_pos
+        pos += start
         match_res.excerpt_pos = pos
         pos += len(match_res.matched_phrase)
         # update the seach position to pass the matched text
         self.draft_context.search_pos = pos
-        return match_res
+        tool_res = await match_res.tool.note_match(ctxt, match_res)
+        return match_res,tool_res
+        
+    async def try_match(self):
+        if not self.draft_context:
+            return None
+        match_res,tool_res = await self.run_matcher()
+        if not match_res:
+            return None
+        result = [dict(match_res=match_res,
+                       tool_res=tool_res),]
+        while tool_res.reprocess_partial:
+            start, end = tool_res.reprocess_partial
+            match_res,tool_res = await self.run_matcher(start, end)
+            if match_res:
+                result.append(dict(match_res=match_res,
+                                   tool_res=tool_res))
+        return result
 
     def finish_draft_context(self):
         res = self.draft_context

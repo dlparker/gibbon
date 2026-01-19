@@ -10,55 +10,8 @@ from gibbon.llm_ops.ollama_call import send_to_ollama
 from gibbon.llm_ops.together_call import send_to_together_ai
 
 logger = logging.getLogger("AimSelect")
+from flow_types import AimTool, AimDef, AimToolResponse, MatchResult, DraftContext
 
-
-@dataclass
-class MatchResult:
-    intent_key: str
-    confidence: float
-    matched_phrase: str
-    tool: 'AimTool'
-    excerpt_pos: Optional[int] = -1
-    
-        
-@dataclass
-class AimDef:
-    unique_name: str
-    description: str
-    examples: str
-    preferred_words: Optional[list[str]] = None
-
-    
-@dataclass
-class AimToolResponse:
-    success: bool
-    can_continue: bool # if draft not finished, can accept more text, if draft finished, can accept unmatched next draft
-    reprocess_partial: Optional[tuple[int,int]] = None
-    reprocess_tool: Optional['AimTool'] = None
-    
-class AimTool:
-
-    def __init__(self, simple_target=None):
-        self.simple_target = simple_target
-        self.draft = None
-        
-    def get_aim_defs(self):
-        raise Exception('child must implement')
-
-    def start_draft(self, draft):
-        self.draft = draft
-        return AimToolResponse(success=True, can_continue=True)
-
-    def end_draft(self, draft):
-        if self.simple_target:
-            success = self.simple_target(draft, self)
-            self.draft = None
-            return AimToolResponse(success=True, can_continue=False)
-        
-    def continuation_draft(self, draft):
-        return AimToolResponse(success=False, can_continue=False)
-
-        
 class ClaudeCodeTool(AimTool):
 
 
@@ -73,24 +26,11 @@ class ClaudeCodeTool(AimTool):
                    description =  'User wants to do claude code planning - author design documents, run tech research, create development stories.',
                    examples = '"Why is this code needed?", "How can I use this python library", ' \
                    '"Create story to for code for palaver project", "Create coding tasks based on story 10", "How can I get this property from a GNUCash file"',
-                   preferred_words = ['draft',]
                    )
             ]
     
-    def start_draft(self, draft):
-        self.draft = draft
-        return AimToolResponse(success=True, can_continue=True)
-
-    def end_draft(self, draft):
-        self.ops.append(draft.full_text)
-        return AimToolResponse(success=True, can_continue=True)
-
-    def continuation_draft(self, draft):
-        if not draft.end_text:
-            self.draft = draft
-            return AimToolResponse(success=False, can_continue=True)
-        self.ops.append(draft.full_text)
-        return AimToolResponse(success=True, can_continue=True)
+    async def note_match(self, draft_context:DraftContext, match_res:MatchResult):
+        pass
 
 class MetaAimTool(AimTool):
 
@@ -102,24 +42,13 @@ class MetaAimTool(AimTool):
         return [
             AimDef(unique_name = 'post_mark_drafts',
                    description =  'User is giving instructions about how to handle a previous draft or modify system behavior.',
-                   examples = "'Change last draft to project management category', 'Reprocess last draft with this prefix, add code to palaver"
+                   examples = "'Change last draft to project management category', 'Reprocess last draft with this prefix, add code to palaver",
+                   preferred_words = ['draft',]
                    )
             ]
 
-    def start_draft(self, draft):
-        self.draft = draft
-        return AimToolResponse(success=True, can_continue=True)
-
-    def end_draft(self, draft):
-        self.ops.append(draft.full_text)
-        return AimToolResponse(success=True, can_continue=True)
-
-    def continuation_draft(self, draft):
-        if not draft.end_text:
-            self.draft = draft
-            return AimToolResponse(success=False, can_continue=True)
-        self.ops.append(draft.full_text)
-        return AimToolResponse(success=True, can_continue=True)
+    async def note_match(self, draft_context:DraftContext, match_res:MatchResult):
+        pass
     
 
 class AimToolbox:
@@ -131,7 +60,7 @@ class AimToolbox:
         if call_mode:
             self.call_mode = call_mode
         else:
-            self.call_mode = os.environ.get("LLM_CALL_CODE", "ollama")
+            self.call_mode = os.environ.get("LLM_CALL_CODE", "mistral-small:24B")
 
     def get_categories(self):
         blocks = []
@@ -220,9 +149,10 @@ class AimToolbox:
         prompt += "   then identify the intent_key, the matching phrase in the transcript and a score for how well they match.\n"
         prompt += "3. if there was no strong match, then set the intent_key to None, the matching phrase to None and the confidence to 0.0\n"
         prompt += "4. The examples in the intent category list to help you understand the intent, do not treat them as part of the transcript.\n"
-        prompt += "5. If the intent category list item includes 'preferred words', give a low score to potential matches that do not contain one of these words\n"
+        prompt += "5. If the intent category list item includes a list of 'preferred words', lower the score\n"
+        prompt += "   by .25 for any potential match that does not contain one of these words.\n"
         prompt += "\n"
-        prompt += "Return, via the classify_intent tool:\n"
+        prompt += "Prepare and return a result using the classify_intent tool:\n"
         prompt += "• the first reasonably matching phrase, it must be an exact quote from the transcript\n"
         prompt += "• the corresponding intent category key\n"
         prompt += "• a realistic confidence score\n"
@@ -279,6 +209,7 @@ class AimToolbox:
                 if aim_def.unique_name == res_dict['intent_key']:
                     target_tool = tool
                     target_def = aim_def
+                    break
 
         result = MatchResult(intent_key=res_dict['intent_key'],
                              confidence=res_dict.get('confidence', 0.0),
@@ -288,73 +219,98 @@ class AimToolbox:
         logger.info("returning %s",result)
         return result
 
-    async def tai_match_call(self, transcript):
+    async def match_call(self, transcript:str) -> [None | MatchResult]:
         prompts = self.make_prompts(transcript)
-        from gibbon.llm_ops.together_call import models
-        model_name = self.call_mode
-        if model_name not in models:
-            raise Exception(f"invalid model_name {model_name}, not int {list(models.keys())}")
-        logger.info("Calling together AI model %s", model_name)
-        response = await send_to_together_ai(prompts, model_name, level_1_llm_tools)
-        result = None
+        if self.call_mode == "ollama":
+            logger.info("Calling ollama %s %s", self.url, self.model)
+            response = await send_to_ollama(prompts, self.url, self.model, level_1_llm_tools)
+        else:
+            from gibbon.llm_ops.together_call import models
+            model_name = self.call_mode
+            if model_name not in models:
+                raise Exception(f"invalid model_name {model_name}, not int {list(models.keys())}")
+            logger.info("Calling together AI model %s", model_name)
+            response = await send_to_together_ai(prompts, model_name, level_1_llm_tools)
+        logger.debug("%s", pformat(response))
         if not hasattr(response, 'choices'):
             logger.warning("Reponse from llm not workable, no choices")
-            return
+            return None
         if len(response.choices) != 1:
             logger.warning(f"Reponse from llm not workable, len of choices not 1, {len(choices)}")
-            return
+            return None
         message = response.choices[0].message
         if not message:
             logger.warning("Reponse from llm not workable, no message")
-            return
-        if not message.tool_calls:
-            logger.warning("Reponse from llm not workable, tool_calls is None, content = \n%s",
+            return None
+        if message.tool_calls:
+            tool_call = None
+            for tc in message.tool_calls:
+                if tc.function.name == "classify_intent":
+                    tool_call = tc
+                    break
+
+            if tool_call is None:
+                logger.warning("Reponse from llm not workable, classify_intent tool call not in result")
+                return
+            
+            res_dict = json.loads(tc.function.arguments)
+            if not res_dict:
+                logger.warning("Reponse from llm not workable, classify_intent tool call missing arguments attribute")
+                return None
+        else:
+            # sometimes it follows the tool call orders but does not say it used the tool call. sigh
+            # have seen this:
+            """
+            content = 
+            [TOOL_CALLS]classify_intent[ARGS]{"intent_key": None, "confidence": 0.0, "matched_phrase": None}
+            """
+            # and this:
+            """
+            content = 
+            classify_intent{"intent_key": "project_management", "confidence": 0.95, "matched_phrase": "house moving project"}
+            """
+            logger.warning("Reponse from llm not tool_calls is None, trying parse of content = \n%s",
                            message.content)
-            return
-        tool_call = None
-        for tc in message.tool_calls:
-            if tc.function.name == "classify_intent":
-                tool_call = tc
-                break
-
-        if tool_call is None:
-            logger.warning("Reponse from llm not workable, classify_intent tool call not in result")
-            return
-
-        res_dict = json.loads(tc.function.arguments)
-        if not res_dict:
-            logger.warning("Reponse from llm not workable, classify_intent tool call missing arguments attribute")
-            return
+            res_dict = None
+            start_pattern1 = "[TOOL_CALLS]classify_intent[ARGS]"
+            start_pattern2 = 'classify_intent{"intent_key"'
+            cstring = message.content.strip()
+            cstring = cstring.replace("None", "null")
+            if cstring.lower().startswith(start_pattern1.lower()):
+                cstring = cstring[len(start_pattern1):]
+                res_dict = json.loads(cstring)
+            elif cstring.lower().startswith(start_pattern2.lower()):
+                index = cstring.find("{")
+                cstring = cstring[index:]
+                res_dict = json.loads(cstring)
+            if not res_dict:
+                logger.warning("Reponse from llm not workable, tool_calls is None, content = \n%s",
+                               message.content)
+                return None
 
         # Check for required fields
         if 'matched_phrase' not in res_dict:
             logger.warning("Response from llm missing required 'matched_phrase' field. Arguments: %s", res_dict)
-            return
+            return None
         if 'intent_key' not in res_dict:
             logger.warning("Response from llm missing required 'intent_key' field")
-            return
+            return None
 
-        target_def = None
         target_tool = None
         for tool in self.tools:
             for aim_def in tool.get_aim_defs():
                 if aim_def.unique_name == res_dict['intent_key']:
                     target_tool = tool
-                    target_def = aim_def
+                    break
 
         result = MatchResult(intent_key=res_dict['intent_key'],
                              confidence=res_dict.get('confidence', 0.0),
                              matched_phrase=res_dict['matched_phrase'],
-                             tool=tool)
+                             tool=target_tool)
                         
         logger.info("returning %s",result)
         return result
 
-    async def match_call(self, transcript):
-        if self.call_mode == "ollama":
-            return await self.ollama_match_call(transcript)
-        else:
-            return await self.tai_match_call(transcript)
         
 level_1_llm_tools = [
     {
@@ -386,32 +342,3 @@ level_1_llm_tools = [
     }
 ]
 
-
-"""
-result_example = {
-    model='mistral:7b-instruct'
-    created_at='2026-01-09T18:20:43.982702469Z'
-    done=True done_reason='stop'
-    total_duration=1575226232
-    load_duration=26363135
-    prompt_eval_count=527
-    prompt_eval_duration=42591777
-    eval_count=77
-    eval_duration=1481660420
-    message=Message(role='assistant',
-                    content='',
-                    thinking=None,
-                    images=None,
-                    tool_name=None,
-                    tool_calls=[
-                        ToolCall(function=
-                                 Function(name='classify_intent',
-                                          arguments={'confidence': 0.95,
-                                                     'intent_key': 'claude_code_request',
-                                                     'matched_phrase': 'Voice to text code',
-                                          )
-                                 )
-                    ]
-                    )
-}
-"""

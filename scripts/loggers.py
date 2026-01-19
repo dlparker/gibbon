@@ -54,11 +54,13 @@ def setup_logging(default_level="WARNING", info_loggers=None, debug_loggers=None
         add_one(logger)
         
     logging.config.dictConfig(config_dict)
-
+    #from pprint import pprint
+    #pprint(config_dict)
 
 def get_loggers():
     res  = []
     res.append(logging.getLogger("AimSelect"))
+    res.append(logging.getLogger("DraftTools"))
     res.append(logging.getLogger("LLMSingleCall"))
     res.append(logging.getLogger("TogetherAPI"))
 
