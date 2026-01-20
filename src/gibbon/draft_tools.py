@@ -10,8 +10,8 @@ from palaver_shared.draft_events import Draft
 from gibbon.llm_ops.ollama_call import send_to_ollama
 from gibbon.llm_ops.together_call import send_to_together_ai
 
-from aim_select import AimToolbox
-from flow_types import DraftContext
+from gibbon.aim_select import AimToolbox
+from gibbon.flow_types import DraftContext
 
 logger = logging.getLogger("DraftTools")
     

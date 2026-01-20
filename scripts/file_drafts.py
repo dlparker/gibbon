@@ -6,10 +6,10 @@ import fire
 
 from palaver_shared.draft_events import Draft, DraftStartEvent, DraftEndEvent
 from palaver_shared.text_events import TextEvent
-from aim_select import AimToolbox, MetaAimTool
+from gibbon.aim_select import AimToolbox, MetaAimTool
 from kboard_tool import KBoardTool
 from claude_tool import ClaudeCodeTool
-from draft_tools import DraftMatcher
+from gibbon.draft_tools import DraftMatcher
 
 from loggers import setup_logging
 OLLAMA_URL = "http://192.168.100.242:11434"

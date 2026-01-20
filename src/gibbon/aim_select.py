@@ -10,7 +10,7 @@ from gibbon.llm_ops.ollama_call import send_to_ollama
 from gibbon.llm_ops.together_call import send_to_together_ai
 
 logger = logging.getLogger("AimSelect")
-from flow_types import AimTool, AimDef, AimToolResponse, MatchResult, DraftContext
+from gibbon.flow_types import AimTool, AimDef, AimToolResponse, MatchResult, DraftContext
 
 
 class MetaAimTool(AimTool):

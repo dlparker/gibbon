@@ -5,7 +5,7 @@ from dataclasses import dataclass, asdict, field
 import jsonlines
 
 from palaver_shared.draft_events import Draft
-from flow_types import AimTool, AimDef, AimToolResponse, MatchResult, DraftContext
+from gibbon.flow_types import AimTool, AimDef, AimToolResponse, MatchResult, DraftContext
 
 @dataclass
 class Task:

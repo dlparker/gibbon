@@ -10,9 +10,9 @@ from palaver_shared.top_error import TopErrorHandler, TopLevelCallback, get_erro
 from palaver_shared.text_events import TextEvent
 from palaver_shared.draft_events import DraftEvent, DraftStartEvent, DraftEndEvent, Draft
 from palaver_shared.audio_events import AudioEvent, AudioChunkEvent
-from aim_select import AimToolbox, MetaAimTool
+from gibbon.aim_select import AimToolbox, MetaAimTool
 from claude_tool import ClaudeCodeTool
-from draft_tools import DraftMatcher
+from gibbon.draft_tools import DraftMatcher
 from kboard_tool import KBoardTool
 
 from loggers import setup_logging
