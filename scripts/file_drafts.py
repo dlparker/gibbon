@@ -6,8 +6,9 @@ import fire
 
 from palaver_shared.draft_events import Draft, DraftStartEvent, DraftEndEvent
 from palaver_shared.text_events import TextEvent
-from aim_select import AimToolbox, ClaudeCodeTool, MetaAimTool
+from aim_select import AimToolbox, MetaAimTool
 from kboard_tool import KBoardTool
+from claude_tool import ClaudeCodeTool
 from draft_tools import DraftMatcher
 
 from loggers import setup_logging

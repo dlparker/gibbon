@@ -87,11 +87,11 @@ class DraftMatcher:
         if not self.draft_context:
             return None
         match_res,tool_res = await self.run_matcher()
-        if not match_res:
+        if not match_res or match_res.intent_key in ['', None]:
             return None
         result = [dict(match_res=match_res,
                        tool_res=tool_res),]
-        while tool_res.reprocess_partial:
+        while tool_res and tool_res.reprocess_partial:
             start, end = tool_res.reprocess_partial
             match_res,tool_res = await self.run_matcher(start, end)
             if match_res:
