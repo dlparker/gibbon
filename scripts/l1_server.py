@@ -105,8 +105,8 @@ async def main_loop():
 async def main():
 
     setup_logging(more_loggers=[logger,],
-                  info_loggers=[logger.name,],
-                  debug_loggers=["AimSelect",])
+                  info_loggers=[logger.name,"AimSelect", "DraftTools",],
+                  debug_loggers=[])
     background_error_dict = None
     class ErrorCallback(TopLevelCallback):
         async def on_error(self, error_dict: dict):

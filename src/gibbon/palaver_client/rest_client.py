@@ -3,7 +3,7 @@ REST API client for fetching drafts from palaver.
 """
 import logging
 from typing import Optional
-impfort httpx
+import httpx
 
 logger = logging.getLogger("PalaverRestClient")
 

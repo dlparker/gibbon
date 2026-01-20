@@ -23,92 +23,6 @@ class FileDraftRunner:
                              [KBoardTool(), ClaudeCodeTool(), MetaAimTool()])
         self.draft_matcher = DraftMatcher(self.toolbox)
 
-    async def direct_bad(self):
-        draft = Draft(start_text="Freddy take this down")
-        ctxt = self.draft_matcher.new_draft(draft)
-        for part in [
-                "mumble mumble mumble",
-                "In the house moving project,"
-                " do this thing.",
-                ]:
-            text_event = TextEvent(text=part)
-            ctxt = self.draft_matcher.new_text_event(text_event)
-        await self.draft_matcher.try_match()
-        ctxt = self.draft_matcher.draft_context
-        assert len(ctxt.matches) == 1
-        top_match = ctxt.matches[0]
-        pprint(top_match)
-        for part in [
-                "mumble mumble mumble",
-                "Name a new task Bob.",
-                " Move stuff from garage to shed.",
-                ]:
-            text_event = TextEvent(text=part)
-            ctxt = self.draft_matcher.new_text_event(text_event)
-        await self.draft_matcher.try_match()
-        ctxt = self.draft_matcher.finish_draft_context()
-        assert len(ctxt.matches) == 2
-        task_match = ctxt.matches[1]
-        pprint(task_match)
-        
-    async def direct_good(self):
-        draft = Draft(start_text="Freddy take this down")
-        ctxt = self.draft_matcher.new_draft(draft)
-        for part in [
-                "mumble mumble mumble",
-                "In the house moving project,"
-                " do this thing.",
-                ]:
-            text_event = TextEvent(text=part)
-            ctxt = self.draft_matcher.new_text_event(text_event)
-        await self.draft_matcher.try_match()
-        ctxt = self.draft_matcher.draft_context
-        assert len(ctxt.matches) == 1
-        top_match = ctxt.matches[0]
-        pprint(top_match)
-        for part in [
-                "mumble mumble mumble",
-                "Name a new task Bob.",
-                " I'll add info to that now",
-                ]:
-            text_event = TextEvent(text=part)
-            ctxt = self.draft_matcher.new_text_event(text_event)
-        await self.draft_matcher.try_match()
-        ctxt = self.draft_matcher.finish_draft_context()
-        assert len(ctxt.matches) == 2
-        task_match = ctxt.matches[1]
-        pprint(task_match)
-
-    async def direct_great(self):
-        draft = Draft(start_text="Freddy take this down")
-        ctxt = self.draft_matcher.new_draft(draft)
-        for part in [
-                "mumble mumble mumble",
-                "In the house moving project,"
-                " do this thing.",
-                ]:
-            text_event = TextEvent(text=part)
-            ctxt = self.draft_matcher.new_text_event(text_event)
-        await self.draft_matcher.try_match()
-        ctxt = self.draft_matcher.draft_context
-        assert len(ctxt.matches) == 1
-        top_match = ctxt.matches[0]
-        pprint(top_match)
-        for part in [
-                "mumble mumble mumble",
-                "Make a new task. ",
-                " I'll add info to that now.",
-                " When it is finished name it Last Task",
-                ]:
-            text_event = TextEvent(text=part)
-            ctxt = self.draft_matcher.new_text_event(text_event)
-        await self.draft_matcher.try_match()
-        ctxt = self.draft_matcher.finish_draft_context()
-        assert len(ctxt.matches) == 2
-        task_match = ctxt.matches[1]
-        pprint(task_match)
-        
-
     async def one_file(self, file_path: str):
         with open(file_path, 'r') as f:
             lines = f.readlines()
@@ -131,6 +45,6 @@ class FileDraftRunner:
         
 if __name__ == "__main__":
     setup_logging(more_loggers=[],
-                  info_loggers=['TogetherAPI', 'AimSelect',],
-                  debug_loggers=[ 'DraftTools', ])
+                  info_loggers=['TogetherAPI', 'AimSelect', 'DraftTools',],
+                  debug_loggers=[])
     fire.Fire(FileDraftRunner())
