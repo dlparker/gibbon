@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, asdict, field
+from datetime import datetime
 import jsonlines
 
 from palaver_shared.draft_events import Draft
@@ -24,5 +25,12 @@ class ClaudeCodeTool(AimTool):
             ]
     
     async def note_match(self, draft_context:DraftContext, match_res:MatchResult):
-        pass
+        drafts_dir = Path.home() / ".claude_drafts"
+        drafts_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        draft_file = drafts_dir / f"{timestamp}.txt"
+        draft_file.write_text(draft_context.text)
+
+        return AimToolResponse(success=True, can_continue=False)
 
